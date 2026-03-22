@@ -597,7 +597,7 @@ def main():
     print("  09:00 AM ET — NYO update")
     print("  04:00 PM ET — EOD score + win rate\n")
 
-    schedule.every().day.at("08:00").do(run_morning_bias)
+    schedule.every().day.at("19:38").do(run_morning_bias)
     schedule.every().day.at("09:00").do(run_nyo_update)
     schedule.every().day.at("16:00").do(run_eod_score)
 
