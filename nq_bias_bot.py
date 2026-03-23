@@ -21,8 +21,9 @@ import pytz
 # ─────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────
-TELEGRAM_BOT_TOKEN = "8757455017:AAFuZgFN5ml3xNCVVE3ww8DyzWThtQrTMos"
-TELEGRAM_CHAT_ID   = "5048230949"
+TELEGRAM_BOT_TOKEN  = "8757455017:AAFuZgFN5ml3xNCVVE3ww8DyzWThtQrTMos"
+TELEGRAM_CHAT_ID    = "5048230949"
+TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "")
 
 TV_USERNAME  = os.getenv("TV_USERNAME", "")
 TV_PASSWORD  = os.getenv("TV_PASSWORD", "")
@@ -37,7 +38,6 @@ UTC = pytz.utc
 
 SCREENSHOT_PATH = Path("/tmp/nq_chart.png")
 WINRATE_FILE    = Path("/tmp/nq_winrate.json")
-
 
 # Shared state between jobs
 today_state = {
@@ -317,6 +317,7 @@ def build_morning_caption(current_price, midnight_open, asia_high, asia_low,
             msg += f"• {icon} {z['bottom']:.2f}–{z['top']:.2f} {side} ({z['dist']:.0f}pts) {z['target']}\n"
     msg += "─────────────────────\n"
     msg += winrate
+    msg += "<i>Not financial advice.</i>"
     return msg
 
 
@@ -501,23 +502,29 @@ def compress_screenshot(image_path):
 def send_telegram_photo(image_path, caption):
     compressed = compress_screenshot(image_path)
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
-    with open(compressed, "rb") as img:
-        requests.post(url, data={
-            "chat_id":    TELEGRAM_CHAT_ID,
-            "caption":    caption,
-            "parse_mode": "HTML",
-        }, files={"photo": img}, timeout=30).raise_for_status()
-    print(f"[{datetime.now(ET).strftime('%H:%M:%S ET')}] Photo sent.")
+    for chat_id in [TELEGRAM_CHAT_ID, TELEGRAM_CHANNEL_ID]:
+        if not chat_id:
+            continue
+        with open(compressed, "rb") as img:
+            requests.post(url, data={
+                "chat_id":    chat_id,
+                "caption":    caption,
+                "parse_mode": "HTML",
+            }, files={"photo": img}, timeout=30).raise_for_status()
+    print(f"[{datetime.now(ET).strftime('%H:%M:%S ET')}] Photo sent to all chats.")
 
 
 def send_telegram_text(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    requests.post(url, json={
-        "chat_id":    TELEGRAM_CHAT_ID,
-        "text":       message,
-        "parse_mode": "HTML",
-    }, timeout=10).raise_for_status()
-    print(f"[{datetime.now(ET).strftime('%H:%M:%S ET')}] Text sent.")
+    for chat_id in [TELEGRAM_CHAT_ID, TELEGRAM_CHANNEL_ID]:
+        if not chat_id:
+            continue
+        requests.post(url, json={
+            "chat_id":    chat_id,
+            "text":       message,
+            "parse_mode": "HTML",
+        }, timeout=10).raise_for_status()
+    print(f"[{datetime.now(ET).strftime('%H:%M:%S ET')}] Text sent to all chats.")
 
 
 # ─────────────────────────────────────────────
@@ -665,9 +672,9 @@ def main():
     schedule.every().day.at("20:00").do(run_eod_score)
 
     # ── Uncomment to test immediately ──
-    # run_morning_bias()
-    # run_nyo_update()
-    # run_eod_score()
+    run_morning_bias()
+    run_nyo_update()
+    run_eod_score()
 
     while True:
         schedule.run_pending()
