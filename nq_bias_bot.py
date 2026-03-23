@@ -1,9 +1,11 @@
 """
-NQ1! Daily Bias Bot — v5
-Schedule:
-  08:00 AM ET — Full bias message + TradingView chart screenshot
-  09:00 AM ET — NYO update: bias check + current price vs all key levels
-  04:00 PM ET — Auto-scores the day's bias, updates win rate tracker
+NQ1! Daily Bias Bot — Final
+Smokey Bias Bot
+
+Schedule (all times ET, stored as UTC for Railway):
+  12:00 UTC (08:00 ET) — Morning bias + TradingView chart screenshot
+  13:00 UTC (09:00 ET) — NYO update
+  20:00 UTC (16:00 ET) — EOD score + win rate
 """
 
 import os
@@ -22,6 +24,10 @@ import pytz
 TELEGRAM_BOT_TOKEN = "8757455017:AAFuZgFN5ml3xNCVVE3ww8DyzWThtQrTMos"
 TELEGRAM_CHAT_ID   = "5048230949"
 
+TV_USERNAME  = os.getenv("TV_USERNAME", "")
+TV_PASSWORD  = os.getenv("TV_PASSWORD", "")
+TV_CHART_URL = "https://www.tradingview.com/chart/hcbriKzA/"
+
 SYMBOL          = "NQ=F"
 IFVG_RANGE_PTS  = 100
 IFVG_LOOKBACK_H = 48
@@ -29,11 +35,10 @@ IFVG_LOOKBACK_H = 48
 ET  = pytz.timezone("America/New_York")
 UTC = pytz.utc
 
-TRADINGVIEW_URL = "https://www.tradingview.com/chart/NQ1!/PoYf81sq-NQ-Daily-Bias/"
 SCREENSHOT_PATH = Path("/tmp/nq_chart.png")
 WINRATE_FILE    = Path("/tmp/nq_winrate.json")
 
-# In-memory store for today's bias (shared between jobs)
+# Shared state between jobs
 today_state = {
     "bias":          None,
     "score":         0,
@@ -52,7 +57,7 @@ today_state = {
 # WIN RATE TRACKER
 # ─────────────────────────────────────────────
 
-def load_winrate() -> dict:
+def load_winrate():
     if WINRATE_FILE.exists():
         try:
             return json.loads(WINRATE_FILE.read_text())
@@ -61,14 +66,13 @@ def load_winrate() -> dict:
     return {"wins": 0, "losses": 0, "neutrals": 0, "history": []}
 
 
-def save_winrate(data: dict):
+def save_winrate(data):
     WINRATE_FILE.write_text(json.dumps(data, indent=2))
 
 
-def record_result(bias_direction: str, delivered: bool):
+def record_result(bias_direction, delivered):
     data = load_winrate()
     date_str = datetime.now(ET).strftime("%Y-%m-%d")
-
     if bias_direction == "neutral":
         data["neutrals"] += 1
         result = "⚪"
@@ -78,35 +82,28 @@ def record_result(bias_direction: str, delivered: bool):
     else:
         data["losses"] += 1
         result = "❌"
-
     data["history"].append({
-        "date":      date_str,
-        "bias":      bias_direction,
-        "delivered": delivered,
-        "result":    result,
+        "date": date_str, "bias": bias_direction,
+        "delivered": delivered, "result": result,
     })
     data["history"] = data["history"][-30:]
     save_winrate(data)
     return data
 
 
-def get_winrate_summary() -> str:
+def get_winrate_summary():
     data = load_winrate()
     wins     = data["wins"]
     losses   = data["losses"]
     neutrals = data["neutrals"]
     total    = wins + losses
     pct      = (wins / total * 100) if total > 0 else 0
-
     msg  = f"📈 <b>Bias Win Rate</b>\n"
     msg += f"✅ {wins}W  ❌ {losses}L  ⚪ {neutrals}N\n"
     msg += f"<b>{pct:.0f}% accuracy</b> ({total} directional days)\n"
-
     if data["history"]:
-        recent = data["history"][-10:]
-        streak = "".join(r["result"] for r in recent)
+        streak = "".join(r["result"] for r in data["history"][-10:])
         msg += f"Last 10: {streak}\n"
-
     return msg
 
 
@@ -114,7 +111,7 @@ def get_winrate_summary() -> str:
 # DATA FETCHING
 # ─────────────────────────────────────────────
 
-def fetch_candles_yf(start_utc: datetime, end_utc: datetime, interval: str = "1m") -> list:
+def fetch_candles_yf(start_utc, end_utc, interval="1m"):
     ticker = yf.Ticker(SYMBOL)
     df = ticker.history(start=start_utc, end=end_utc, interval=interval)
     if df.empty:
@@ -131,7 +128,7 @@ def fetch_candles_yf(start_utc: datetime, end_utc: datetime, interval: str = "1m
     return candles
 
 
-def get_session_windows() -> dict:
+def get_session_windows():
     now_et   = datetime.now(ET)
     today_et = now_et.date()
     midnight = ET.localize(datetime(today_et.year, today_et.month, today_et.day, 0, 0))
@@ -144,28 +141,28 @@ def get_session_windows() -> dict:
     }
 
 
-def get_midnight_open(midnight_utc: datetime) -> float | None:
+def get_midnight_open(midnight_utc):
     candles = fetch_candles_yf(midnight_utc, midnight_utc + timedelta(minutes=5), "1m")
     return candles[0]["open"] if candles else None
 
 
-def get_session_hl(start_utc: datetime, end_utc: datetime) -> tuple:
+def get_session_hl(start_utc, end_utc):
     candles = fetch_candles_yf(start_utc, end_utc, "1m")
     if not candles:
         return None, None
     return max(c["high"] for c in candles), min(c["low"] for c in candles)
 
 
-def get_current_price() -> float | None:
+def get_current_price():
     now_utc = datetime.now(UTC)
     candles = fetch_candles_yf(now_utc - timedelta(minutes=10), now_utc, "1m")
     return candles[-1]["close"] if candles else None
 
 
-def get_previous_day_hl() -> tuple:
-    now_et    = datetime.now(ET)
-    today_et  = now_et.date()
-    midnight  = ET.localize(datetime(today_et.year, today_et.month, today_et.day, 0, 0))
+def get_previous_day_hl():
+    now_et   = datetime.now(ET)
+    today_et = now_et.date()
+    midnight = ET.localize(datetime(today_et.year, today_et.month, today_et.day, 0, 0))
     prev_open  = (midnight - timedelta(hours=30)).astimezone(UTC)
     prev_close = (midnight - timedelta(hours=1)).astimezone(UTC)
     candles = fetch_candles_yf(prev_open, prev_close, "60m")
@@ -178,11 +175,10 @@ def get_previous_day_hl() -> tuple:
 # iFVG DETECTION
 # ─────────────────────────────────────────────
 
-def detect_ifvgs(current_price: float) -> list:
+def detect_ifvgs(current_price):
     now_utc   = datetime.now(UTC)
     start_utc = now_utc - timedelta(hours=IFVG_LOOKBACK_H)
     candles   = fetch_candles_yf(start_utc, now_utc, "60m")
-
     if len(candles) < 3:
         return []
 
@@ -209,12 +205,10 @@ def detect_ifvgs(current_price: float) -> list:
                 break
         if not ifvg_type:
             continue
-
         zone_mid = (fvg["top"] + fvg["bottom"]) / 2
         dist     = abs(current_price - zone_mid)
         if dist > IFVG_RANGE_PTS:
             continue
-
         ifvgs.append({
             "top":      fvg["top"],
             "bottom":   fvg["bottom"],
@@ -232,8 +226,7 @@ def detect_ifvgs(current_price: float) -> list:
 # BIAS LOGIC
 # ─────────────────────────────────────────────
 
-def compute_bias(midnight_open, current_price, asia_high, asia_low,
-                 london_high, london_low) -> dict:
+def compute_bias(midnight_open, current_price, asia_high, asia_low, london_high, london_low):
     signals, score = {}, 0
 
     if current_price > midnight_open:
@@ -264,20 +257,15 @@ def compute_bias(midnight_open, current_price, asia_high, asia_low,
         signals["london_break"] = (" 0 ⚪", "London inside Asia range")
 
     if score >= 2:
-        overall = "🟢 BULLISH"
-        direction = "bullish"
+        overall, direction = "🟢 BULLISH", "bullish"
     elif score <= -2:
-        overall = "🔴 BEARISH"
-        direction = "bearish"
+        overall, direction = "🔴 BEARISH", "bearish"
     elif score == 1:
-        overall = "🟡 LEANING BULLISH"
-        direction = "bullish"
+        overall, direction = "🟡 LEANING BULLISH", "bullish"
     elif score == -1:
-        overall = "🟡 LEANING BEARISH"
-        direction = "bearish"
+        overall, direction = "🟡 LEANING BEARISH", "bearish"
     else:
-        overall = "⚪ NEUTRAL / MIXED"
-        direction = "neutral"
+        overall, direction = "⚪ NEUTRAL / MIXED", "neutral"
 
     return {"overall": overall, "score": score, "signals": signals, "direction": direction}
 
@@ -287,7 +275,7 @@ def compute_bias(midnight_open, current_price, asia_high, asia_low,
 # ─────────────────────────────────────────────
 
 def build_morning_caption(current_price, midnight_open, asia_high, asia_low,
-                          london_high, london_low, pdh, pdl, bias, ifvgs) -> str:
+                          london_high, london_low, pdh, pdl, bias, ifvgs):
     date_str = datetime.now(ET).strftime("%a %b %d")
     winrate  = get_winrate_summary()
 
@@ -301,11 +289,9 @@ def build_morning_caption(current_price, midnight_open, asia_high, asia_low,
     msg += f"🌏 Asia:   H <b>{asia_high:.2f}</b> / L <b>{asia_low:.2f}</b>\n"
     msg += f"🌍 London: H <b>{london_high:.2f}</b> / L <b>{london_low:.2f}</b>\n"
     msg += "─────────────────────\n"
-
     labels = {"midnight_open": "MO", "asia_range": "Asia", "london_break": "London"}
     for key, (vote, detail) in bias["signals"].items():
         msg += f"• {vote} {labels[key]}: <i>{detail}</i>\n"
-
     msg += "─────────────────────\n"
     msg += f"<b>1H iFVGs ±{IFVG_RANGE_PTS}pts:</b>\n"
     if not ifvgs:
@@ -315,7 +301,6 @@ def build_morning_caption(current_price, midnight_open, asia_high, asia_low,
             icon = "🟩" if z["type"] == "bull" else "🟥"
             side = "Support ↓" if z["relation"] == "below" else "Resistance ↑"
             msg += f"• {icon} {z['bottom']:.2f}–{z['top']:.2f} {side} ({z['dist']:.0f}pts) {z['target']}\n"
-
     msg += "─────────────────────\n"
     msg += winrate
     msg += "<i>Not financial advice.</i>"
@@ -323,8 +308,7 @@ def build_morning_caption(current_price, midnight_open, asia_high, asia_low,
 
 
 def build_nyo_message(current_price, bias, midnight_open,
-                      asia_high, asia_low, london_high, london_low,
-                      pdh, pdl) -> str:
+                      asia_high, asia_low, london_high, london_low, pdh, pdl):
     date_str  = datetime.now(ET).strftime("%a %b %d")
     direction = bias["direction"]
     mo        = midnight_open
@@ -362,8 +346,7 @@ def build_nyo_message(current_price, bias, midnight_open,
     return msg
 
 
-def build_eod_message(bias_direction, delivered, current_price,
-                      midnight_open, winrate_data) -> str:
+def build_eod_message(bias_direction, delivered, current_price, midnight_open, winrate_data):
     date_str = datetime.now(ET).strftime("%a %b %d")
     result   = "✅ DELIVERED" if delivered else "❌ FAILED"
     wins     = winrate_data["wins"]
@@ -371,9 +354,7 @@ def build_eod_message(bias_direction, delivered, current_price,
     neutrals = winrate_data["neutrals"]
     total    = wins + losses
     pct      = (wins / total * 100) if total > 0 else 0
-
-    recent = winrate_data["history"][-10:]
-    streak = "".join(r["result"] for r in recent)
+    streak   = "".join(r["result"] for r in winrate_data["history"][-10:])
 
     msg  = f"📋 <b>EOD Score — {date_str}</b>\n"
     msg += f"Bias: <b>{bias_direction.upper()}</b> → {result}\n"
@@ -385,20 +366,14 @@ def build_eod_message(bias_direction, delivered, current_price,
 
 
 # ─────────────────────────────────────────────
-# CHART SCREENSHOT (with TradingView login)
+# CHART SCREENSHOT
 # ─────────────────────────────────────────────
 
-TV_USERNAME = os.getenv("TV_USERNAME", "")
-TV_PASSWORD = os.getenv("TV_PASSWORD", "")
-
-# Your saved chart URL — bot will navigate here after login
-TV_CHART_URL = "https://www.tradingview.com/chart/hcbriKzA/"
-
-
-def take_chart_screenshot() -> Path | None:
+def take_chart_screenshot():
     try:
         from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
     except ImportError:
+        print("  ✗ Playwright not installed")
         return None
 
     print("  → Launching headless browser...")
@@ -414,13 +389,13 @@ def take_chart_screenshot() -> Path | None:
             )
             page = context.new_page()
 
-            # ── Step 1: Log into TradingView ──
+            # Log into TradingView if credentials provided
             if TV_USERNAME and TV_PASSWORD:
                 print("  → Logging into TradingView...")
-                page.goto("https://www.tradingview.com/accounts/signin/", wait_until="domcontentloaded", timeout=30000)
+                page.goto("https://www.tradingview.com/accounts/signin/",
+                          wait_until="domcontentloaded", timeout=30000)
                 page.wait_for_timeout(2000)
 
-                # Dismiss cookie popup if present
                 for sel in ["[data-name='accept-cookies']", "button:has-text('Got it')", "button:has-text('Accept all')"]:
                     try:
                         btn = page.query_selector(sel)
@@ -430,18 +405,14 @@ def take_chart_screenshot() -> Path | None:
                     except Exception:
                         pass
 
-                # Click "Email" sign in option
                 try:
-                    email_btn = page.query_selector("button[name='Email']")
-                    if not email_btn:
-                        email_btn = page.query_selector("text=Email")
+                    email_btn = page.query_selector("button[name='Email']") or page.query_selector("text=Email")
                     if email_btn:
                         email_btn.click()
                         page.wait_for_timeout(1000)
                 except Exception:
                     pass
 
-                # Fill in credentials
                 try:
                     page.fill("input[name='username']", TV_USERNAME)
                     page.wait_for_timeout(500)
@@ -451,19 +422,18 @@ def take_chart_screenshot() -> Path | None:
                     page.wait_for_timeout(4000)
                     print("  → Login submitted.")
                 except Exception as e:
-                    print(f"  ⚠ Login fill failed: {e}")
+                    print(f"  ⚠ Login failed: {e}")
 
-            # ── Step 2: Navigate to your chart ──
-            print(f"  → Loading chart...")
+            # Navigate to chart
+            print("  → Loading chart...")
             page.goto(TV_CHART_URL, wait_until="domcontentloaded", timeout=30000)
-
             try:
                 page.wait_for_selector("canvas", timeout=20000)
                 page.wait_for_timeout(6000)
             except PWTimeout:
                 pass
 
-            # Dismiss any popups
+            # Dismiss popups
             for sel in ["[data-name='accept-cookies']", "button:has-text('Got it')", "button:has-text('Accept')"]:
                 try:
                     btn = page.query_selector(sel)
@@ -473,7 +443,7 @@ def take_chart_screenshot() -> Path | None:
                 except Exception:
                     pass
 
-            # ── Step 3: Screenshot just the chart area ──
+            # Screenshot chart area
             try:
                 chart = page.query_selector(".chart-container") or page.query_selector("canvas")
                 if chart:
@@ -492,9 +462,7 @@ def take_chart_screenshot() -> Path | None:
         return None
 
 
-
-def compress_screenshot(image_path: Path) -> Path:
-    """Compress screenshot to fit Telegram 10MB limit."""
+def compress_screenshot(image_path):
     try:
         from PIL import Image
         compressed_path = Path("/tmp/nq_chart_compressed.jpg")
@@ -507,11 +475,15 @@ def compress_screenshot(image_path: Path) -> Path:
         print(f"  → Compressed to {compressed_path.stat().st_size // 1024}KB")
         return compressed_path
     except Exception as e:
-        print(f"  ⚠ Compression failed: {e}, using original")
+        print(f"  ⚠ Compression failed: {e}")
         return image_path
 
 
-def send_telegram_photo(image_path: Path, caption: str):
+# ─────────────────────────────────────────────
+# TELEGRAM
+# ─────────────────────────────────────────────
+
+def send_telegram_photo(image_path, caption):
     compressed = compress_screenshot(image_path)
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
     with open(compressed, "rb") as img:
@@ -522,6 +494,15 @@ def send_telegram_photo(image_path: Path, caption: str):
         }, files={"photo": img}, timeout=30).raise_for_status()
     print(f"[{datetime.now(ET).strftime('%H:%M:%S ET')}] Photo sent.")
 
+
+def send_telegram_text(message):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    requests.post(url, json={
+        "chat_id":    TELEGRAM_CHAT_ID,
+        "text":       message,
+        "parse_mode": "HTML",
+    }, timeout=10).raise_for_status()
+    print(f"[{datetime.now(ET).strftime('%H:%M:%S ET')}] Text sent.")
 
 
 # ─────────────────────────────────────────────
@@ -550,11 +531,10 @@ def run_morning_bias():
                 send_telegram_text(caption)
             return
 
-        bias    = compute_bias(midnight_open, current_price, asia_high, asia_low, london_high, london_low)
-        ifvgs   = detect_ifvgs(current_price)
-        caption = build_morning_caption(current_price, midnight_open, asia_high, asia_low,
-                                        london_high, london_low, pdh, pdl, bias, ifvgs)
+        bias  = compute_bias(midnight_open, current_price, asia_high, asia_low, london_high, london_low)
+        ifvgs = detect_ifvgs(current_price)
 
+        # Store for NYO and EOD jobs
         today_state.update({
             "bias":          bias["direction"],
             "score":         bias["score"],
@@ -567,6 +547,9 @@ def run_morning_bias():
             "pdl":           pdl,
             "date":          datetime.now(ET).strftime("%Y-%m-%d"),
         })
+
+        caption = build_morning_caption(current_price, midnight_open, asia_high, asia_low,
+                                        london_high, london_low, pdh, pdl, bias, ifvgs)
 
         if screenshot and screenshot.exists():
             send_telegram_photo(screenshot, caption)
@@ -596,7 +579,6 @@ def run_nyo_update():
             "overall":   "🟢 BULLISH" if today_state["bias"] == "bullish" else "🔴 BEARISH" if today_state["bias"] == "bearish" else "⚪ NEUTRAL",
             "direction": today_state["bias"],
             "score":     today_state["score"],
-            "signals":   {},
         }
 
         msg = build_nyo_message(
@@ -654,18 +636,18 @@ def run_eod_score():
 # ─────────────────────────────────────────────
 
 def main():
-    print("NQ1! Bias Bot v5 — scheduled daily:")
-    print("  08:00 AM ET — Morning bias + chart")
-    print("  09:00 AM ET — NYO update")
-    print("  04:00 PM ET — EOD score + win rate\n")
+    print("Smokey Bias Bot — scheduled daily:")
+    print("  12:00 UTC (08:00 ET) — Morning bias + chart")
+    print("  13:00 UTC (09:00 ET) — NYO update")
+    print("  20:00 UTC (16:00 ET) — EOD score + win rate\n")
 
-    schedule.every().day.at("12:00").do(run_morning_bias)   # 8 AM ET
-    schedule.every().day.at("13:00").do(run_nyo_update)     # 9 AM ET
-    schedule.every().day.at("20:00").do(run_eod_score)      # 4 PM ET
+    schedule.every().day.at("12:00").do(run_morning_bias)
+    schedule.every().day.at("13:00").do(run_nyo_update)
+    schedule.every().day.at("20:00").do(run_eod_score)
 
     # ── Uncomment to test immediately ──
     # run_morning_bias()
-    run_nyo_update()
+     run_nyo_update()
     # run_eod_score()
 
     while True:
