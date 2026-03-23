@@ -19,8 +19,8 @@ import pytz
 # ─────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────
-TELEGRAM_BOT_TOKEN = "8757455017:AAFuZgFN5ml3xNCVVE3ww8DyzWThtQrTMos"
-TELEGRAM_CHAT_ID   = "5048230949"
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_BOT_TOKEN")
+TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID",   "YOUR_CHAT_ID")
 
 SYMBOL          = "NQ=F"
 IFVG_RANGE_PTS  = 100
@@ -385,8 +385,15 @@ def build_eod_message(bias_direction, delivered, current_price,
 
 
 # ─────────────────────────────────────────────
-# CHART SCREENSHOT
+# CHART SCREENSHOT (with TradingView login)
 # ─────────────────────────────────────────────
+
+TV_USERNAME = os.getenv("TV_USERNAME", "")
+TV_PASSWORD = os.getenv("TV_PASSWORD", "")
+
+# Your saved chart URL — bot will navigate here after login
+TV_CHART_URL = "https://www.tradingview.com/chart/hcbriKzA/"
+
 
 def take_chart_screenshot() -> Path | None:
     try:
@@ -401,18 +408,62 @@ def take_chart_screenshot() -> Path | None:
                 "--no-sandbox", "--disable-setuid-sandbox",
                 "--disable-dev-shm-usage", "--disable-gpu",
             ])
-            page = browser.new_context(
+            context = browser.new_context(
                 viewport={"width": 1600, "height": 900},
                 device_scale_factor=2,
-            ).new_page()
+            )
+            page = context.new_page()
 
-            page.goto(TRADINGVIEW_URL, wait_until="domcontentloaded", timeout=30000)
+            # ── Step 1: Log into TradingView ──
+            if TV_USERNAME and TV_PASSWORD:
+                print("  → Logging into TradingView...")
+                page.goto("https://www.tradingview.com/accounts/signin/", wait_until="domcontentloaded", timeout=30000)
+                page.wait_for_timeout(2000)
+
+                # Dismiss cookie popup if present
+                for sel in ["[data-name='accept-cookies']", "button:has-text('Got it')", "button:has-text('Accept all')"]:
+                    try:
+                        btn = page.query_selector(sel)
+                        if btn:
+                            btn.click()
+                            page.wait_for_timeout(500)
+                    except Exception:
+                        pass
+
+                # Click "Email" sign in option
+                try:
+                    email_btn = page.query_selector("button[name='Email']")
+                    if not email_btn:
+                        email_btn = page.query_selector("text=Email")
+                    if email_btn:
+                        email_btn.click()
+                        page.wait_for_timeout(1000)
+                except Exception:
+                    pass
+
+                # Fill in credentials
+                try:
+                    page.fill("input[name='username']", TV_USERNAME)
+                    page.wait_for_timeout(500)
+                    page.fill("input[name='password']", TV_PASSWORD)
+                    page.wait_for_timeout(500)
+                    page.keyboard.press("Enter")
+                    page.wait_for_timeout(4000)
+                    print("  → Login submitted.")
+                except Exception as e:
+                    print(f"  ⚠ Login fill failed: {e}")
+
+            # ── Step 2: Navigate to your chart ──
+            print(f"  → Loading chart...")
+            page.goto(TV_CHART_URL, wait_until="domcontentloaded", timeout=30000)
+
             try:
                 page.wait_for_selector("canvas", timeout=20000)
                 page.wait_for_timeout(6000)
             except PWTimeout:
                 pass
 
+            # Dismiss any popups
             for sel in ["[data-name='accept-cookies']", "button:has-text('Got it')", "button:has-text('Accept')"]:
                 try:
                     btn = page.query_selector(sel)
@@ -422,10 +473,20 @@ def take_chart_screenshot() -> Path | None:
                 except Exception:
                     pass
 
-            page.screenshot(path=str(SCREENSHOT_PATH))
+            # ── Step 3: Screenshot just the chart area ──
+            try:
+                chart = page.query_selector(".chart-container") or page.query_selector("canvas")
+                if chart:
+                    chart.screenshot(path=str(SCREENSHOT_PATH))
+                else:
+                    page.screenshot(path=str(SCREENSHOT_PATH))
+            except Exception:
+                page.screenshot(path=str(SCREENSHOT_PATH))
+
             browser.close()
             print("  → Screenshot saved.")
             return SCREENSHOT_PATH
+
     except Exception as e:
         print(f"  ✗ Screenshot failed: {e}")
         return None
