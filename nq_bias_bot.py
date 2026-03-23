@@ -37,9 +37,7 @@ UTC = pytz.utc
 
 SCREENSHOT_PATH = Path("/tmp/nq_chart.png")
 WINRATE_FILE    = Path("/tmp/nq_winrate.json")
-# One-time reset — remove this line after deploying once
-if WINRATE_FILE.exists():
-    WINRATE_FILE.unlink()
+
 
 # Shared state between jobs
 today_state = {
@@ -668,9 +666,9 @@ def main():
     schedule.every().day.at("20:00").do(run_eod_score)
 
     # ── Uncomment to test immediately ──
-    run_morning_bias()
-    run_nyo_update()
-    run_eod_score()
+    # run_morning_bias()
+    # run_nyo_update()
+    # run_eod_score()
 
     while True:
         schedule.run_pending()
