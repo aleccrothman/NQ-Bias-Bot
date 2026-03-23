@@ -4,11 +4,6 @@ Schedule:
   08:00 AM ET — Full bias message + TradingView chart screenshot
   09:00 AM ET — NYO update: bias check + current price vs all key levels
   04:00 PM ET — Auto-scores the day's bias, updates win rate tracker
-
-New features vs v4:
-  - PDH / PDL (previous day high & low)
-  - NYO alert at 9:00 AM ET
-  - Win rate tracker stored in JSON file (persists across days)
 """
 
 import os
@@ -24,8 +19,8 @@ import pytz
 # ─────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────
-TELEGRAM_BOT_TOKEN = "8757455017:AAFuZgFN5ml3xNCVVE3ww8DyzWThtQrTMos"
-TELEGRAM_CHAT_ID   = "5048230949"
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_BOT_TOKEN")
+TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID",   "YOUR_CHAT_ID")
 
 SYMBOL          = "NQ=F"
 IFVG_RANGE_PTS  = 100
@@ -35,13 +30,12 @@ ET  = pytz.timezone("America/New_York")
 UTC = pytz.utc
 
 TRADINGVIEW_URL = "https://www.tradingview.com/chart/NQ1!/PoYf81sq-NQ-Daily-Bias/"
-
 SCREENSHOT_PATH = Path("/tmp/nq_chart.png")
 WINRATE_FILE    = Path("/tmp/nq_winrate.json")
 
 # In-memory store for today's bias (shared between jobs)
 today_state = {
-    "bias":          None,   # "bullish" | "bearish" | "neutral"
+    "bias":          None,
     "score":         0,
     "midnight_open": None,
     "asia_high":     None,
@@ -72,10 +66,6 @@ def save_winrate(data: dict):
 
 
 def record_result(bias_direction: str, delivered: bool):
-    """
-    bias_direction: 'bullish' | 'bearish' | 'neutral'
-    delivered: True if price moved in bias direction by NY close
-    """
     data = load_winrate()
     date_str = datetime.now(ET).strftime("%Y-%m-%d")
 
@@ -95,8 +85,6 @@ def record_result(bias_direction: str, delivered: bool):
         "delivered": delivered,
         "result":    result,
     })
-
-    # Keep last 30 days only
     data["history"] = data["history"][-30:]
     save_winrate(data)
     return data
@@ -114,7 +102,6 @@ def get_winrate_summary() -> str:
     msg += f"✅ {wins}W  ❌ {losses}L  ⚪ {neutrals}N\n"
     msg += f"<b>{pct:.0f}% accuracy</b> ({total} directional days)\n"
 
-    # Last 10 days
     if data["history"]:
         recent = data["history"][-10:]
         streak = "".join(r["result"] for r in recent)
@@ -176,16 +163,11 @@ def get_current_price() -> float | None:
 
 
 def get_previous_day_hl() -> tuple:
-    """Return (PDH, PDL) — previous trading day's high and low."""
     now_et    = datetime.now(ET)
     today_et  = now_et.date()
     midnight  = ET.localize(datetime(today_et.year, today_et.month, today_et.day, 0, 0))
-
-    # Previous day: 6 PM ET two days ago → 5 PM ET yesterday
-    # (NQ daily session: 6 PM ET open, 5 PM ET close)
-    prev_open  = (midnight - timedelta(hours=30)).astimezone(UTC)  # 6 PM ET prev-prev day
-    prev_close = (midnight - timedelta(hours=1)).astimezone(UTC)   # 5 PM ET prev day
-
+    prev_open  = (midnight - timedelta(hours=30)).astimezone(UTC)
+    prev_close = (midnight - timedelta(hours=1)).astimezone(UTC)
     candles = fetch_candles_yf(prev_open, prev_close, "60m")
     if not candles:
         return None, None
@@ -220,9 +202,11 @@ def detect_ifvgs(current_price: float) -> list:
         for j in range(fvg["formed_at"] + 1, len(candles)):
             close = candles[j]["close"]
             if fvg["type"] == "bull_fvg" and close < fvg["bottom"]:
-                ifvg_type = "bear"; break
+                ifvg_type = "bear"
+                break
             if fvg["type"] == "bear_fvg" and close > fvg["top"]:
-                ifvg_type = "bull"; break
+                ifvg_type = "bull"
+                break
         if not ifvg_type:
             continue
 
@@ -253,31 +237,47 @@ def compute_bias(midnight_open, current_price, asia_high, asia_low,
     signals, score = {}, 0
 
     if current_price > midnight_open:
-        signals["midnight_open"] = ("+1 🟢", f"Price {current_price:.2f} > MO {midnight_open:.2f}"); score += 1
+        signals["midnight_open"] = ("+1 🟢", f"Price {current_price:.2f} > MO {midnight_open:.2f}")
+        score += 1
     elif current_price < midnight_open:
-        signals["midnight_open"] = ("-1 🔴", f"Price {current_price:.2f} < MO {midnight_open:.2f}"); score -= 1
+        signals["midnight_open"] = ("-1 🔴", f"Price {current_price:.2f} < MO {midnight_open:.2f}")
+        score -= 1
     else:
         signals["midnight_open"] = (" 0 ⚪", f"Price at MO {midnight_open:.2f}")
 
     if current_price > asia_high:
-        signals["asia_range"] = ("+1 🟢", f"Above Asia High {asia_high:.2f}"); score += 1
+        signals["asia_range"] = ("+1 🟢", f"Above Asia High {asia_high:.2f}")
+        score += 1
     elif current_price < asia_low:
-        signals["asia_range"] = ("-1 🔴", f"Below Asia Low {asia_low:.2f}"); score -= 1
+        signals["asia_range"] = ("-1 🔴", f"Below Asia Low {asia_low:.2f}")
+        score -= 1
     else:
         signals["asia_range"] = (" 0 ⚪", "Inside Asia Range")
 
     if london_high > asia_high:
-        signals["london_break"] = ("+1 🟢", f"London swept Asia High ({london_high:.2f})"); score += 1
+        signals["london_break"] = ("+1 🟢", f"London swept Asia High ({london_high:.2f})")
+        score += 1
     elif london_low < asia_low:
-        signals["london_break"] = ("-1 🔴", f"London swept Asia Low ({london_low:.2f})"); score -= 1
+        signals["london_break"] = ("-1 🔴", f"London swept Asia Low ({london_low:.2f})")
+        score -= 1
     else:
         signals["london_break"] = (" 0 ⚪", "London inside Asia range")
 
-    if   score >= 2:  overall = "🟢 BULLISH";        direction = "bullish"
-    elif score <= -2: overall = "🔴 BEARISH";        direction = "bearish"
-    elif score == 1:  overall = "🟡 LEANING BULLISH"; direction = "bullish"
-    elif score == -1: overall = "🟡 LEANING BEARISH"; direction = "bearish"
-    else:             overall = "⚪ NEUTRAL / MIXED"; direction = "neutral"
+    if score >= 2:
+        overall = "🟢 BULLISH"
+        direction = "bullish"
+    elif score <= -2:
+        overall = "🔴 BEARISH"
+        direction = "bearish"
+    elif score == 1:
+        overall = "🟡 LEANING BULLISH"
+        direction = "bullish"
+    elif score == -1:
+        overall = "🟡 LEANING BEARISH"
+        direction = "bearish"
+    else:
+        overall = "⚪ NEUTRAL / MIXED"
+        direction = "neutral"
 
     return {"overall": overall, "score": score, "signals": signals, "direction": direction}
 
@@ -296,7 +296,8 @@ def build_morning_caption(current_price, midnight_open, asia_high, asia_low,
     msg += "─────────────────────\n"
     msg += f"📍 Price:  <b>{current_price:.2f}</b>\n"
     msg += f"🕛 MO:     <b>{midnight_open:.2f}</b>\n"
-    msg += f"📅 PDH:    <b>{pdh:.2f}</b>  PDL: <b>{pdl:.2f}</b>\n" if pdh and pdl else ""
+    if pdh and pdl:
+        msg += f"📅 PDH:    <b>{pdh:.2f}</b>  PDL: <b>{pdl:.2f}</b>\n"
     msg += f"🌏 Asia:   H <b>{asia_high:.2f}</b> / L <b>{asia_low:.2f}</b>\n"
     msg += f"🌍 London: H <b>{london_high:.2f}</b> / L <b>{london_low:.2f}</b>\n"
     msg += "─────────────────────\n"
@@ -324,9 +325,7 @@ def build_morning_caption(current_price, midnight_open, asia_high, asia_low,
 def build_nyo_message(current_price, bias, midnight_open,
                       asia_high, asia_low, london_high, london_low,
                       pdh, pdl) -> str:
-    date_str = datetime.now(ET).strftime("%a %b %d")
-
-    # Check if bias is being respected
+    date_str  = datetime.now(ET).strftime("%a %b %d")
     direction = bias["direction"]
     mo        = midnight_open
 
@@ -339,9 +338,8 @@ def build_nyo_message(current_price, bias, midnight_open,
     else:
         status = "⚪ Neutral bias — no directional expectation"
 
-    # Distance from key levels
     def dist_label(price, level, name):
-        diff = price - level
+        diff  = price - level
         arrow = "↑" if diff > 0 else "↓"
         return f"{name}: {level:.2f} ({arrow}{abs(diff):.0f}pts)"
 
@@ -355,8 +353,8 @@ def build_nyo_message(current_price, bias, midnight_open,
     if pdh and pdl:
         msg += f"• {dist_label(current_price, pdh, '📅 PDH')}\n"
         msg += f"• {dist_label(current_price, pdl, '📅 PDL')}\n"
-    msg += f"• {dist_label(current_price, asia_high, '🌏 Asia H')}\n"
-    msg += f"• {dist_label(current_price, asia_low,  '🌏 Asia L')}\n"
+    msg += f"• {dist_label(current_price, asia_high,   '🌏 Asia H')}\n"
+    msg += f"• {dist_label(current_price, asia_low,    '🌏 Asia L')}\n"
     msg += f"• {dist_label(current_price, london_high, '🌍 London H')}\n"
     msg += f"• {dist_label(current_price, london_low,  '🌍 London L')}\n"
     msg += "─────────────────────\n"
@@ -366,13 +364,13 @@ def build_nyo_message(current_price, bias, midnight_open,
 
 def build_eod_message(bias_direction, delivered, current_price,
                       midnight_open, winrate_data) -> str:
-    date_str  = datetime.now(ET).strftime("%a %b %d")
-    result    = "✅ DELIVERED" if delivered else "❌ FAILED"
-    wins      = winrate_data["wins"]
-    losses    = winrate_data["losses"]
-    neutrals  = winrate_data["neutrals"]
-    total     = wins + losses
-    pct       = (wins / total * 100) if total > 0 else 0
+    date_str = datetime.now(ET).strftime("%a %b %d")
+    result   = "✅ DELIVERED" if delivered else "❌ FAILED"
+    wins     = winrate_data["wins"]
+    losses   = winrate_data["losses"]
+    neutrals = winrate_data["neutrals"]
+    total    = wins + losses
+    pct      = (wins / total * 100) if total > 0 else 0
 
     recent = winrate_data["history"][-10:]
     streak = "".join(r["result"] for r in recent)
@@ -426,6 +424,7 @@ def take_chart_screenshot() -> Path | None:
 
             page.screenshot(path=str(SCREENSHOT_PATH))
             browser.close()
+            print("  → Screenshot saved.")
             return SCREENSHOT_PATH
     except Exception as e:
         print(f"  ✗ Screenshot failed: {e}")
@@ -440,8 +439,8 @@ def send_telegram_photo(image_path: Path, caption: str):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
     with open(image_path, "rb") as img:
         requests.post(url, data={
-            "chat_id": TELEGRAM_CHAT_ID,
-            "caption": caption,
+            "chat_id":    TELEGRAM_CHAT_ID,
+            "caption":    caption,
             "parse_mode": "HTML",
         }, files={"photo": img}, timeout=30).raise_for_status()
     print(f"[{datetime.now(ET).strftime('%H:%M:%S ET')}] Photo sent.")
@@ -450,8 +449,8 @@ def send_telegram_photo(image_path: Path, caption: str):
 def send_telegram_text(message: str):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     requests.post(url, json={
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
+        "chat_id":    TELEGRAM_CHAT_ID,
+        "text":       message,
         "parse_mode": "HTML",
     }, timeout=10).raise_for_status()
     print(f"[{datetime.now(ET).strftime('%H:%M:%S ET')}] Text sent.")
@@ -462,7 +461,6 @@ def send_telegram_text(message: str):
 # ─────────────────────────────────────────────
 
 def run_morning_bias():
-    """8:00 AM ET — full bias message with chart screenshot."""
     print(f"\n[{datetime.now(ET).strftime('%Y-%m-%d %H:%M ET')}] Running morning bias job...")
     windows = get_session_windows()
 
@@ -473,18 +471,22 @@ def run_morning_bias():
         pdh, pdl                = get_previous_day_hl()
         current_price           = get_current_price() or midnight_open
 
-      if not all([midnight_open, asia_high, asia_low, london_high, london_low, current_price]):
-          screenshot = take_chart_screenshot()
-          if screenshot and screenshot.exists():
-              send_telegram_photo(screenshot, "⚠️ <b>NQ Bias Bot</b>: Missing session data — market may be closed.")
-          else:
-              send_telegram_text("⚠️ <b>NQ Bias Bot</b>: Missing session data — market may be closed.")
-          return
+        # Always take screenshot first
+        screenshot = take_chart_screenshot()
 
-        bias = compute_bias(midnight_open, current_price, asia_high, asia_low, london_high, london_low)
-        ifvgs = detect_ifvgs(current_price)
+        if not all([midnight_open, asia_high, asia_low, london_high, london_low, current_price]):
+            caption = "⚠️ <b>NQ Bias Bot</b>: Missing session data — market may be closed."
+            if screenshot and screenshot.exists():
+                send_telegram_photo(screenshot, caption)
+            else:
+                send_telegram_text(caption)
+            return
 
-        # Store state for later jobs
+        bias    = compute_bias(midnight_open, current_price, asia_high, asia_low, london_high, london_low)
+        ifvgs   = detect_ifvgs(current_price)
+        caption = build_morning_caption(current_price, midnight_open, asia_high, asia_low,
+                                        london_high, london_low, pdh, pdl, bias, ifvgs)
+
         today_state.update({
             "bias":          bias["direction"],
             "score":         bias["score"],
@@ -497,10 +499,6 @@ def run_morning_bias():
             "pdl":           pdl,
             "date":          datetime.now(ET).strftime("%Y-%m-%d"),
         })
-
-        caption    = build_morning_caption(current_price, midnight_open, asia_high, asia_low,
-                                           london_high, london_low, pdh, pdl, bias, ifvgs)
-        screenshot = take_chart_screenshot()
 
         if screenshot and screenshot.exists():
             send_telegram_photo(screenshot, caption)
@@ -518,7 +516,6 @@ def run_morning_bias():
 
 
 def run_nyo_update():
-    """9:00 AM ET — NYO update message."""
     print(f"\n[{datetime.now(ET).strftime('%Y-%m-%d %H:%M ET')}] Running NYO update...")
 
     try:
@@ -527,9 +524,8 @@ def run_nyo_update():
             send_telegram_text("⚠️ <b>NYO Update</b>: No data available.")
             return
 
-        # Reconstruct bias object for message builder
         bias = {
-            "overall":   f"{'🟢 BULLISH' if today_state['bias'] == 'bullish' else '🔴 BEARISH' if today_state['bias'] == 'bearish' else '⚪ NEUTRAL'}",
+            "overall":   "🟢 BULLISH" if today_state["bias"] == "bullish" else "🔴 BEARISH" if today_state["bias"] == "bearish" else "⚪ NEUTRAL",
             "direction": today_state["bias"],
             "score":     today_state["score"],
             "signals":   {},
@@ -538,9 +534,9 @@ def run_nyo_update():
         msg = build_nyo_message(
             current_price, bias,
             today_state["midnight_open"],
-            today_state["asia_high"],  today_state["asia_low"],
+            today_state["asia_high"],   today_state["asia_low"],
             today_state["london_high"], today_state["london_low"],
-            today_state["pdh"],        today_state["pdl"],
+            today_state["pdh"],         today_state["pdl"],
         )
         send_telegram_text(msg)
 
@@ -554,7 +550,6 @@ def run_nyo_update():
 
 
 def run_eod_score():
-    """4:00 PM ET — auto-score the day's bias and update win rate."""
     print(f"\n[{datetime.now(ET).strftime('%Y-%m-%d %H:%M ET')}] Running EOD score...")
 
     try:
@@ -566,15 +561,12 @@ def run_eod_score():
             send_telegram_text("⚠️ <b>EOD Score</b>: No bias data for today.")
             return
 
-        # Determine if bias delivered:
-        # Bullish = price closed above midnight open
-        # Bearish = price closed below midnight open
         if direction == "bullish":
             delivered = current_price > mo
         elif direction == "bearish":
             delivered = current_price < mo
         else:
-            delivered = False  # neutral = no score
+            delivered = False
 
         winrate_data = record_result(direction, delivered)
         msg = build_eod_message(direction, delivered, current_price, mo, winrate_data)
