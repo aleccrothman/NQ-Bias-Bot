@@ -317,7 +317,6 @@ def build_morning_caption(current_price, midnight_open, asia_high, asia_low,
             msg += f"• {icon} {z['bottom']:.2f}–{z['top']:.2f} {side} ({z['dist']:.0f}pts) {z['target']}\n"
     msg += "─────────────────────\n"
     msg += winrate
-    msg += "<i>Not financial advice.</i>"
     return msg
 
 
