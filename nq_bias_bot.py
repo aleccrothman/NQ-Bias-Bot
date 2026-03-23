@@ -673,8 +673,8 @@ def main():
 
     # ── Uncomment to test immediately ──
     run_morning_bias()
-    run_nyo_update()
-    run_eod_score()
+    # run_nyo_update()
+    # run_eod_score()
 
     while True:
         schedule.run_pending()
