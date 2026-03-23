@@ -473,13 +473,13 @@ def run_morning_bias():
         pdh, pdl                = get_previous_day_hl()
         current_price           = get_current_price() or midnight_open
 
-        if not all([midnight_open, asia_high, asia_low, london_high, london_low, current_price]):
-    screenshot = take_chart_screenshot()
-    if screenshot and screenshot.exists():
-        send_telegram_photo(screenshot, "⚠️ <b>NQ Bias Bot</b>: Missing session data — market may be closed.")
-    else:
-        send_telegram_text("⚠️ <b>NQ Bias Bot</b>: Missing session data — market may be closed.")
-    return
+      if not all([midnight_open, asia_high, asia_low, london_high, london_low, current_price]):
+          screenshot = take_chart_screenshot()
+          if screenshot and screenshot.exists():
+              send_telegram_photo(screenshot, "⚠️ <b>NQ Bias Bot</b>: Missing session data — market may be closed.")
+          else:
+              send_telegram_text("⚠️ <b>NQ Bias Bot</b>: Missing session data — market may be closed.")
+          return
 
         bias = compute_bias(midnight_open, current_price, asia_high, asia_low, london_high, london_low)
         ifvgs = detect_ifvgs(current_price)
