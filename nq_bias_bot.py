@@ -588,7 +588,11 @@ def run_nyo_update():
             today_state["london_high"], today_state["london_low"],
             today_state["pdh"],         today_state["pdl"],
         )
-        send_telegram_text(msg)
+        screenshot = take_chart_screenshot()
+        if screenshot and screenshot.exists():
+            send_telegram_photo(screenshot, msg)
+        else:
+            send_telegram_text(msg)
 
     except Exception as e:
         err = f"⚠️ <b>NYO Update Error:</b> {e}"
@@ -646,9 +650,9 @@ def main():
     schedule.every().day.at("20:00").do(run_eod_score)
 
     # ── Uncomment to test immediately ──
-    # run_morning_bias()
-    # run_nyo_update()
-    # run_eod_score()
+     run_morning_bias()
+     run_nyo_update()
+     run_eod_score()
 
     while True:
         schedule.run_pending()
