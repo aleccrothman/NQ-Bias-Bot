@@ -657,7 +657,7 @@ def main():
     schedule.every().day.at("16:00").do(run_eod_score)
 
     # ── Uncomment to test immediately ──
-    run_morning_bias()
+    # run_morning_bias()
     # run_nyo_update()
     # run_eod_score()
 
