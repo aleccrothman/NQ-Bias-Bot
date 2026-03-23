@@ -19,8 +19,8 @@ import pytz
 # ─────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────
-TELEGRAM_BOT_TOKEN = "8757455017:AAFuZgFN5ml3xNCVVE3ww8DyzWThtQrTMos"
-TELEGRAM_CHAT_ID   = "5048230949"
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_BOT_TOKEN")
+TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID",   "YOUR_CHAT_ID")
 
 SYMBOL          = "NQ=F"
 IFVG_RANGE_PTS  = 100
@@ -492,13 +492,29 @@ def take_chart_screenshot() -> Path | None:
         return None
 
 
-# ─────────────────────────────────────────────
-# TELEGRAM
-# ─────────────────────────────────────────────
+
+def compress_screenshot(image_path: Path) -> Path:
+    """Compress screenshot to fit Telegram 10MB limit."""
+    try:
+        from PIL import Image
+        compressed_path = Path("/tmp/nq_chart_compressed.jpg")
+        img = Image.open(image_path)
+        max_width = 1280
+        if img.width > max_width:
+            ratio = max_width / img.width
+            img = img.resize((max_width, int(img.height * ratio)), Image.LANCZOS)
+        img.convert("RGB").save(compressed_path, "JPEG", quality=85, optimize=True)
+        print(f"  → Compressed to {compressed_path.stat().st_size // 1024}KB")
+        return compressed_path
+    except Exception as e:
+        print(f"  ⚠ Compression failed: {e}, using original")
+        return image_path
+
 
 def send_telegram_photo(image_path: Path, caption: str):
+    compressed = compress_screenshot(image_path)
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
-    with open(image_path, "rb") as img:
+    with open(compressed, "rb") as img:
         requests.post(url, data={
             "chat_id":    TELEGRAM_CHAT_ID,
             "caption":    caption,
@@ -506,15 +522,6 @@ def send_telegram_photo(image_path: Path, caption: str):
         }, files={"photo": img}, timeout=30).raise_for_status()
     print(f"[{datetime.now(ET).strftime('%H:%M:%S ET')}] Photo sent.")
 
-
-def send_telegram_text(message: str):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    requests.post(url, json={
-        "chat_id":    TELEGRAM_CHAT_ID,
-        "text":       message,
-        "parse_mode": "HTML",
-    }, timeout=10).raise_for_status()
-    print(f"[{datetime.now(ET).strftime('%H:%M:%S ET')}] Text sent.")
 
 
 # ─────────────────────────────────────────────
@@ -652,12 +659,12 @@ def main():
     print("  09:00 AM ET — NYO update")
     print("  04:00 PM ET — EOD score + win rate\n")
 
-    schedule.every().day.at("08:00").do(run_morning_bias)
-    schedule.every().day.at("09:00").do(run_nyo_update)
-    schedule.every().day.at("16:00").do(run_eod_score)
+    schedule.every().day.at("12:00").do(run_morning_bias)   # 8 AM ET
+    schedule.every().day.at("13:00").do(run_nyo_update)     # 9 AM ET
+    schedule.every().day.at("20:00").do(run_eod_score)      # 4 PM ET
 
     # ── Uncomment to test immediately ──
-    # run_morning_bias()
+    run_morning_bias()
     # run_nyo_update()
     # run_eod_score()
 
