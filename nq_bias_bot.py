@@ -104,6 +104,7 @@ def get_winrate_summary():
     if data["history"]:
         streak = "".join(r["result"] for r in data["history"][-10:])
         msg += f"Last 10: {streak}\n"
+    msg += "<i>Not financial advice.</i>"
     return msg
 
 
@@ -342,7 +343,8 @@ def build_nyo_message(current_price, bias, midnight_open,
     msg += f"• {dist_label(current_price, london_high, '🌍 London H')}\n"
     msg += f"• {dist_label(current_price, london_low,  '🌍 London L')}\n"
     msg += "─────────────────────\n"
-    msg += "<i>NY Kill Zone: 7–10 AM ET</i>"
+    msg += "<i>NY Kill Zone: 7–10 AM ET</i>\n"
+    msg += "<i>Not financial advice.</i>"
     return msg
 
 
@@ -362,6 +364,7 @@ def build_eod_message(bias_direction, delivered, current_price, midnight_open, w
     msg += "─────────────────────\n"
     msg += f"<b>Win Rate: {pct:.0f}%</b> ({wins}W / {losses}L / {neutrals}N)\n"
     msg += f"Last 10: {streak}\n"
+    msg += "<i>Not financial advice.</i>"
     return msg
 
 
