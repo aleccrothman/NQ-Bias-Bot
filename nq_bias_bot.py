@@ -34,10 +34,8 @@ IFVG_LOOKBACK_H = 48
 ET  = pytz.timezone("America/New_York")
 UTC = pytz.utc
 
-TRADINGVIEW_URL = (
-    "https://www.tradingview.com/chart/?symbol=CME_MINI%3ANQ1%21"
-    "&interval=15&theme=dark&style=1"
-)
+TRADINGVIEW_URL = "https://www.tradingview.com/chart/NQ1!/PoYf81sq-NQ-Daily-Bias/"
+
 SCREENSHOT_PATH = Path("/tmp/nq_chart.png")
 WINRATE_FILE    = Path("/tmp/nq_winrate.json")
 
