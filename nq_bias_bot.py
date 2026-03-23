@@ -37,6 +37,9 @@ UTC = pytz.utc
 
 SCREENSHOT_PATH = Path("/tmp/nq_chart.png")
 WINRATE_FILE    = Path("/tmp/nq_winrate.json")
+# One-time reset — remove this line after deploying once
+if WINRATE_FILE.exists():
+    WINRATE_FILE.unlink()
 
 # Shared state between jobs
 today_state = {
@@ -150,8 +153,8 @@ def get_midnight_open(midnight_utc):
 def get_session_hl(start_utc, end_utc):
     candles = fetch_candles_yf(start_utc, end_utc, "1m")
     if not candles:
-        return None, None
-    return max(c["high"] for c in candles), min(c["low"] for c in candles)
+        return None, None, None
+    return max(c["high"] for c in candles), min(c["low"] for c in candles), candles[-1]["close"]
 
 
 def get_current_price():
@@ -227,7 +230,7 @@ def detect_ifvgs(current_price):
 # BIAS LOGIC
 # ─────────────────────────────────────────────
 
-def compute_bias(midnight_open, current_price, asia_high, asia_low, london_high, london_low):
+def compute_bias(midnight_open, current_price, asia_high, asia_low, london_high, london_low, london_close=None):
     signals, score = {}, 0
 
     if current_price > midnight_open:
@@ -248,12 +251,24 @@ def compute_bias(midnight_open, current_price, asia_high, asia_low, london_high,
     else:
         signals["asia_range"] = (" 0 ⚪", "Inside Asia Range")
 
+    # London break with reversal detection
+    # If London swept a level but closed back inside the Asia range = liquidity grab (opposite bias)
     if london_high > asia_high:
-        signals["london_break"] = ("+1 🟢", f"London swept Asia High ({london_high:.2f})")
-        score += 1
+        if london_close is not None and london_close < asia_high:
+            # Swept Asia High but closed back below = bearish liquidity grab
+            signals["london_break"] = ("+1 🟢", f"London swept Asia High ({london_high:.2f}) then closed back below — bullish reversal signal")
+            score += 1
+        else:
+            signals["london_break"] = ("+1 🟢", f"London broke above Asia High ({london_high:.2f})")
+            score += 1
     elif london_low < asia_low:
-        signals["london_break"] = ("-1 🔴", f"London swept Asia Low ({london_low:.2f})")
-        score -= 1
+        if london_close is not None and london_close > asia_low:
+            # Swept Asia Low but closed back above = bullish liquidity grab
+            signals["london_break"] = ("+1 🟢", f"London swept Asia Low ({london_low:.2f}) then closed back above — bullish reversal signal")
+            score += 1
+        else:
+            signals["london_break"] = ("-1 🔴", f"London broke below Asia Low ({london_low:.2f})")
+            score -= 1
     else:
         signals["london_break"] = (" 0 ⚪", "London inside Asia range")
 
@@ -304,6 +319,7 @@ def build_morning_caption(current_price, midnight_open, asia_high, asia_low,
             msg += f"• {icon} {z['bottom']:.2f}–{z['top']:.2f} {side} ({z['dist']:.0f}pts) {z['target']}\n"
     msg += "─────────────────────\n"
     msg += winrate
+    msg += "<i>Not financial advice.</i>"
     return msg
 
 
@@ -517,8 +533,8 @@ def run_morning_bias():
 
     try:
         midnight_open           = get_midnight_open(windows["midnight_open_utc"])
-        asia_high, asia_low     = get_session_hl(windows["asia_start_utc"], windows["asia_end_utc"])
-        london_high, london_low = get_session_hl(windows["london_start_utc"], windows["london_end_utc"])
+        asia_high, asia_low, _          = get_session_hl(windows["asia_start_utc"], windows["asia_end_utc"])
+        london_high, london_low, london_close = get_session_hl(windows["london_start_utc"], windows["london_end_utc"])
         pdh, pdl                = get_previous_day_hl()
         current_price           = get_current_price() or midnight_open
 
@@ -533,7 +549,7 @@ def run_morning_bias():
                 send_telegram_text(caption)
             return
 
-        bias  = compute_bias(midnight_open, current_price, asia_high, asia_low, london_high, london_low)
+        bias  = compute_bias(midnight_open, current_price, asia_high, asia_low, london_high, london_low, london_close)
         ifvgs = detect_ifvgs(current_price)
 
         # Store for NYO and EOD jobs
@@ -652,9 +668,9 @@ def main():
     schedule.every().day.at("20:00").do(run_eod_score)
 
     # ── Uncomment to test immediately ──
-    run_morning_bias()
-    run_nyo_update()
-    run_eod_score()
+    # run_morning_bias()
+    # run_nyo_update()
+    # run_eod_score()
 
     while True:
         schedule.run_pending()
