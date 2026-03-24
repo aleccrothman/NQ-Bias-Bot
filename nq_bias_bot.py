@@ -94,7 +94,7 @@ def get_winrate_summary():
 
 # FOREX FACTORY NEWS SCRAPER
 
-def get_forex_factory_news(days=2):
+def get_forex_factory_news(days=3):
     """Fetch today + next N days of high/medium impact USD news from Forex Factory XML feed.
     Times in XML are GMT — we convert to ET."""
     try:
@@ -233,7 +233,7 @@ def build_news_message(all_events):
 def run_news_job():
     print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running macro news job...")
     try:
-        all_events = get_forex_factory_news(days=2)
+        all_events = get_forex_factory_news(days=3)
         msg = build_news_message(all_events)
         send_telegram_text(msg)
     except Exception as e:
