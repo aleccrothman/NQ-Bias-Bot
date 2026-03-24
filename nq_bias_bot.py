@@ -163,7 +163,7 @@ def build_news_message(events):
         return msg
     has_kill_zone = any(e["during_kill_zone"] for e in events)
     for e in events:
-        icon = "[HIGH]" if e["impact"] == "red" else "[MED]"
+        icon = "<b>[RED]</b>" if e["impact"] == "red" else "<b>[ORA]</b>"
         kz = " -- KILL ZONE!" if e["during_kill_zone"] else ""
         msg += icon + " <b>" + e["time"] + "</b> - " + e["event"] + kz + "\n"
         if e["forecast"] != "-" or e["previous"] != "-":
