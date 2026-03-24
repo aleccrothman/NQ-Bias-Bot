@@ -94,97 +94,88 @@ def get_winrate_summary():
 
 # FOREX FACTORY NEWS SCRAPER
 
-def get_forex_factory_news(days=3):
-    """Scrape today + next N days of high/medium impact USD news from Forex Factory."""
+def get_forex_factory_news(days=2):
+    """Fetch today + next N days of high/medium impact USD news from Forex Factory XML feed."""
     try:
-        url = "https://www.forexfactory.com/calendar"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept-Language": "en-US,en;q=0.5",
-        }
+        import xml.etree.ElementTree as ET_xml
+        url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
+        headers = {"User-Agent": "Mozilla/5.0"}
         resp = requests.get(url, headers=headers, timeout=15)
         resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
 
+        root = ET_xml.fromstring(resp.content)
         today_et = datetime.now(ET).date()
         cutoff = today_et + timedelta(days=days)
+        all_events = {}
 
-        all_events = {}  # keyed by date string
-        rows = soup.select("tr.calendar__row")
-        current_time = None
-        current_date = today_et
+        for event in root.findall("event"):
+            currency = event.findtext("country", "")
+            if currency != "USD":
+                continue
 
-        for row in rows:
-            # Check for date header row
-            date_el = row.select_one(".calendar__cell.calendar__date span")
-            if date_el and date_el.text.strip():
+            impact = event.findtext("impact", "").lower()
+            if impact not in ["high", "medium"]:
+                continue
+
+            impact_key = "red" if impact == "high" else "orange"
+
+            title = event.findtext("title", "Unknown")
+            date_str = event.findtext("date", "")
+            time_str = event.findtext("time", "All Day")
+            forecast = event.findtext("forecast", "-") or "-"
+            previous = event.findtext("previous", "-") or "-"
+
+            # Parse date
+            try:
+                event_date = datetime.strptime(date_str, "%m-%d-%Y").date()
+            except Exception:
                 try:
-                    parsed_date = datetime.strptime(date_el.text.strip() + " " + str(today_et.year), "%a %b %d %Y").date()
-                    if parsed_date < today_et:
-                        parsed_date = parsed_date.replace(year=today_et.year + 1)
-                    current_date = parsed_date
-                    current_time = None
+                    event_date = datetime.strptime(date_str, "%Y-%m-%d").date()
                 except Exception:
-                    pass
+                    continue
 
-            if current_date > cutoff:
-                break
-            if current_date < today_et:
+            if event_date < today_et or event_date > cutoff:
                 continue
 
-            currency = row.select_one(".calendar__currency")
-            if not currency or currency.text.strip() != "USD":
-                continue
-
-            impact_el = row.select_one(".calendar__impact span")
-            if not impact_el:
-                continue
-            impact_class = str(impact_el.get("class", []))
-            if "ff-impact-red" in impact_class:
-                impact = "red"
-            elif "ff-impact-ora" in impact_class:
-                impact = "orange"
-            else:
-                continue
-
-            time_el = row.select_one(".calendar__time")
-            if time_el and time_el.text.strip():
-                current_time = time_el.text.strip()
-
-            event_el = row.select_one(".calendar__event-title")
-            event_name = event_el.text.strip() if event_el else "Unknown"
-            forecast_el = row.select_one(".calendar__forecast")
-            previous_el = row.select_one(".calendar__previous")
-            forecast = forecast_el.text.strip() if forecast_el else "-"
-            previous = previous_el.text.strip() if previous_el else "-"
-
+            # Check kill zone (today only)
             during_kill_zone = False
-            if current_time and str(current_date) == str(today_et):
+            if event_date == today_et and time_str and time_str != "All Day":
                 try:
-                    t = current_time.upper().strip()
+                    t = time_str.upper().strip()
                     parsed = datetime.strptime(t, "%I:%M%p")
                     if 7 <= parsed.hour < 10:
                         during_kill_zone = True
                 except Exception:
-                    pass
+                    try:
+                        parsed = datetime.strptime(t, "%I:%M %p")
+                        if 7 <= parsed.hour < 10:
+                            during_kill_zone = True
+                    except Exception:
+                        pass
 
-            date_key = current_date.strftime("%a %b %d")
+            date_key = event_date.strftime("%a %b %d")
             if date_key not in all_events:
                 all_events[date_key] = []
             all_events[date_key].append({
-                "time": current_time or "All Day",
-                "event": event_name,
-                "impact": impact,
+                "time": time_str,
+                "event": title,
+                "impact": impact_key,
                 "forecast": forecast,
                 "previous": previous,
                 "during_kill_zone": during_kill_zone,
-                "date": current_date,
+                "date": event_date,
             })
 
-        return all_events
+        # Sort each day by time
+        for date_key in all_events:
+            all_events[date_key].sort(key=lambda x: x["time"])
+
+        # Sort days chronologically
+        sorted_events = dict(sorted(all_events.items(), key=lambda x: x[1][0]["date"] if x[1] else today_et))
+        return sorted_events
 
     except Exception as e:
-        print("Forex Factory scrape failed: " + str(e))
+        print("Forex Factory XML fetch failed: " + str(e))
         return {}
 
 
