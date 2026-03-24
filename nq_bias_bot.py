@@ -95,11 +95,12 @@ def get_winrate_summary():
 # FOREX FACTORY NEWS SCRAPER
 
 def get_forex_factory_news(days=2):
-    """Fetch today + next N days of high/medium impact USD news from Forex Factory XML feed."""
+    """Fetch today + next N days of high/medium impact USD news from Forex Factory XML feed.
+    Times in XML are GMT — we convert to ET."""
     try:
         import xml.etree.ElementTree as ET_xml
         url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
-        headers = {"User-Agent": "Mozilla/5.0"}
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         resp = requests.get(url, headers=headers, timeout=15)
         resp.raise_for_status()
 
@@ -118,14 +119,13 @@ def get_forex_factory_news(days=2):
                 continue
 
             impact_key = "red" if impact == "high" else "orange"
-
             title = event.findtext("title", "Unknown")
             date_str = event.findtext("date", "")
-            time_str = event.findtext("time", "All Day")
+            time_str_raw = event.findtext("time", "") or ""
             forecast = event.findtext("forecast", "-") or "-"
             previous = event.findtext("previous", "-") or "-"
 
-            # Parse date
+            # Parse date (format: MM-DD-YYYY)
             try:
                 event_date = datetime.strptime(date_str, "%m-%d-%Y").date()
             except Exception:
@@ -137,38 +137,52 @@ def get_forex_factory_news(days=2):
             if event_date < today_et or event_date > cutoff:
                 continue
 
-            # Check kill zone (today only)
+            # Convert GMT time to ET
+            display_time = "All Day"
             during_kill_zone = False
-            if event_date == today_et and time_str and time_str != "All Day":
+            if time_str_raw and time_str_raw.strip():
                 try:
-                    t = time_str.upper().strip()
-                    parsed = datetime.strptime(t, "%I:%M%p")
-                    if 7 <= parsed.hour < 10:
-                        during_kill_zone = True
+                    # XML times are like "8:30am" in GMT
+                    t_clean = time_str_raw.strip().upper()
+                    # Try parsing GMT time
+                    for fmt in ["%I:%M%p", "%I:%M %p", "%H:%M"]:
+                        try:
+                            parsed_gmt = datetime.strptime(t_clean, fmt)
+                            # Convert GMT to ET (ET = GMT - 4 during DST, GMT - 5 during standard)
+                            now_utc = datetime.now(pytz.utc)
+                            now_et_check = now_utc.astimezone(ET)
+                            utc_offset = int(now_et_check.utcoffset().total_seconds() / 3600)  # e.g. -4
+                            et_hour = (parsed_gmt.hour + utc_offset) % 24
+                            et_min = parsed_gmt.minute
+                            # Format as 12hr ET
+                            et_dt = parsed_gmt.replace(hour=et_hour, minute=et_min)
+                            display_time = et_dt.strftime("%-I:%M %p") + " ET"
+                            # Kill zone check (today only): 7-10 AM ET
+                            if event_date == today_et and 7 <= et_hour < 10:
+                                during_kill_zone = True
+                            break
+                        except Exception:
+                            continue
                 except Exception:
-                    try:
-                        parsed = datetime.strptime(t, "%I:%M %p")
-                        if 7 <= parsed.hour < 10:
-                            during_kill_zone = True
-                    except Exception:
-                        pass
+                    display_time = time_str_raw
 
             date_key = event_date.strftime("%a %b %d")
             if date_key not in all_events:
                 all_events[date_key] = []
             all_events[date_key].append({
-                "time": time_str,
+                "time": display_time,
                 "event": title,
                 "impact": impact_key,
                 "forecast": forecast,
                 "previous": previous,
                 "during_kill_zone": during_kill_zone,
                 "date": event_date,
+                "sort_hour": et_hour if display_time != "All Day" else -1,
             })
 
-        # Sort each day by time
+        # Sort each day by ET hour
         for date_key in all_events:
-            all_events[date_key].sort(key=lambda x: x["time"])
+            all_events[date_key].sort(key=lambda x: x["sort_hour"])
 
         # Sort days chronologically
         sorted_events = dict(sorted(all_events.items(), key=lambda x: x[1][0]["date"] if x[1] else today_et))
