@@ -17,6 +17,7 @@ import yfinance as yf
 from datetime import datetime, timedelta
 from pathlib import Path
 import pytz
+from bs4 import BeautifulSoup
 
 # ─────────────────────────────────────────────
 # CONFIG
@@ -108,6 +109,142 @@ def get_winrate_summary():
     msg += "<i>Not financial advice.</i>"
     return msg
 
+
+
+
+# ─────────────────────────────────────────────
+# FOREX FACTORY NEWS SCRAPER
+# ─────────────────────────────────────────────
+
+def get_forex_factory_news():
+    """
+    Scrape today's high and medium impact USD news from Forex Factory.
+    Returns list of dicts: {time, event, impact, forecast, previous, during_kill_zone}
+    """
+    try:
+        url = "https://www.forexfactory.com/calendar"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+        }
+        resp = requests.get(url, headers=headers, timeout=15)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        events = []
+        rows = soup.select("tr.calendar__row")
+
+        current_time = None
+        for row in rows:
+            # Skip non-USD events
+            currency = row.select_one(".calendar__currency")
+            if not currency or currency.text.strip() != "USD":
+                continue
+
+            # Get impact
+            impact_el = row.select_one(".calendar__impact span")
+            if not impact_el:
+                continue
+            impact_class = impact_el.get("class", [])
+            if "icon--ff-impact-red" in str(impact_class):
+                impact = "red"
+            elif "icon--ff-impact-ora" in str(impact_class):
+                impact = "orange"
+            else:
+                continue  # Skip low impact
+
+            # Get time
+            time_el = row.select_one(".calendar__time")
+            if time_el and time_el.text.strip():
+                current_time = time_el.text.strip()
+
+            # Get event name
+            event_el = row.select_one(".calendar__event-title")
+            event_name = event_el.text.strip() if event_el else "Unknown Event"
+
+            # Get forecast and previous
+            forecast_el = row.select_one(".calendar__forecast")
+            previous_el = row.select_one(".calendar__previous")
+            forecast = forecast_el.text.strip() if forecast_el else "—"
+            previous = previous_el.text.strip() if previous_el else "—"
+
+            # Check if during NY kill zone (7-10 AM ET)
+            during_kill_zone = False
+            if current_time:
+                try:
+                    t = current_time.lower().replace("am", " AM").replace("pm", " PM").strip()
+                    parsed = datetime.strptime(t, "%I:%M %p")
+                    hour = parsed.hour
+                    if 7 <= hour < 10:
+                        during_kill_zone = True
+                except Exception:
+                    pass
+
+            events.append({
+                "time":             current_time or "All Day",
+                "event":            event_name,
+                "impact":           impact,
+                "forecast":         forecast,
+                "previous":         previous,
+                "during_kill_zone": during_kill_zone,
+            })
+
+        return events
+
+    except Exception as e:
+        print(f"  ✗ Forex Factory scrape failed: {e}")
+        return []
+
+
+def build_news_message(events):
+    date_str = datetime.now(ET).strftime("%a %b %d")
+    msg  = f"📰 <b>Macro News — {date_str}</b>
+"
+    msg += "─────────────────────
+"
+
+    if not events:
+        msg += "• No high impact USD news today
+"
+        msg += "─────────────────────
+"
+        msg += "<i>Not financial advice.</i>"
+        return msg
+
+    has_kill_zone = any(e["during_kill_zone"] for e in events)
+
+    for e in events:
+        icon = "🔴" if e["impact"] == "red" else "🟡"
+        kz   = " ⚠️ <b>Kill Zone!</b>" if e["during_kill_zone"] else ""
+        msg += f"{icon} <b>{e['time']}</b> — {e['event']}{kz}
+"
+        if e["forecast"] != "—" or e["previous"] != "—":
+            msg += f"   Forecast: {e['forecast']} | Prev: {e['previous']}
+"
+
+    msg += "─────────────────────
+"
+    if has_kill_zone:
+        msg += "⚠️ <b>High impact news during NY Kill Zone — trade carefully</b>
+"
+    msg += "<i>Not financial advice.</i>"
+    return msg
+
+
+def run_news_job():
+    print(f"\n[{datetime.now(ET).strftime('%Y-%m-%d %H:%M ET')}] Running macro news job...")
+    try:
+        events = get_forex_factory_news()
+        msg    = build_news_message(events)
+        send_telegram_text(msg)
+    except Exception as e:
+        err = f"⚠️ <b>News Error:</b> {e}"
+        print(err)
+        try:
+            send_telegram_text(err)
+        except Exception:
+            pass
 
 # ─────────────────────────────────────────────
 # DATA FETCHING
@@ -663,16 +800,19 @@ def run_eod_score():
 
 def main():
     print("Smokey Bias Bot — scheduled daily:")
+    print("  11:00 UTC (07:00 ET) — Macro news")
     print("  12:00 UTC (08:00 ET) — Morning bias + chart")
     print("  13:00 UTC (09:00 ET) — NYO update")
     print("  20:00 UTC (16:00 ET) — EOD score + win rate\n")
 
+    schedule.every().day.at("11:00").do(run_news_job)
     schedule.every().day.at("12:00").do(run_morning_bias)
     schedule.every().day.at("13:00").do(run_nyo_update)
     schedule.every().day.at("20:00").do(run_eod_score)
 
     # ── Uncomment to test immediately ──
-    # run_morning_bias()
+     run_news_job()
+     run_morning_bias()
     # run_nyo_update()
     # run_eod_score()
 
