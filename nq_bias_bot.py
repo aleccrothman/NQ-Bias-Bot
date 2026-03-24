@@ -272,9 +272,14 @@ def get_session_windows():
     }
 
 def get_midnight_open(midnight_utc):
-    candles = fetch_candles_yf(midnight_utc, midnight_utc + timedelta(minutes=5), "1m")
+    # Try 1m data first with wider window
+    candles = fetch_candles_yf(midnight_utc, midnight_utc + timedelta(minutes=30), "1m")
+    if candles:
+        return candles[0]["open"]
+    # Fallback to 5m data
+    candles = fetch_candles_yf(midnight_utc, midnight_utc + timedelta(hours=1), "5m")
     return candles[0]["open"] if candles else None
-
+  
 def get_session_hl(start_utc, end_utc):
     candles = fetch_candles_yf(start_utc, end_utc, "1m")
     if not candles:
