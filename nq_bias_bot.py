@@ -36,6 +36,19 @@ UTC = pytz.utc
 
 SCREENSHOT_PATH = Path("/tmp/nq_chart.png")
 WINRATE_FILE    = Path("/tmp/nq_winrate.json")
+LEVELS_FILE     = Path("/tmp/tv_levels.json")
+
+
+def load_tv_levels():
+    """Load TradingView levels sent via webhook. Returns today's levels or empty dict."""
+    if not LEVELS_FILE.exists():
+        return {}
+    try:
+        data = json.loads(LEVELS_FILE.read_text())
+        today = datetime.now(ET).strftime("%Y-%m-%d")
+        return data.get(today, {})
+    except Exception:
+        return {}
 
 today_state = {
     "bias": None, "score": 0,
@@ -75,6 +88,59 @@ def record_result(bias_direction, delivered):
     data["history"] = data["history"][-30:]
     save_winrate(data)
     return data
+
+
+def record_result_v2(bias_direction, result_type):
+    """Enhanced scoring: win/failed/choppy/neutral."""
+    data = load_winrate()
+    date_str = datetime.now(ET).strftime("%Y-%m-%d")
+    if result_type == "win":
+        data["wins"] += 1
+        result = "W"
+    elif result_type == "failed":
+        data["losses"] += 1
+        result = "L"
+    else:
+        data["neutrals"] += 1
+        result = "C" if result_type == "choppy" else "N"
+    data["history"].append({"date": date_str, "bias": bias_direction, "result_type": result_type, "result": result})
+    data["history"] = data["history"][-30:]
+    save_winrate(data)
+    return data
+
+
+def build_eod_message_v2(bias_direction, result_type, current_price, midnight_open, price_diff, winrate_data):
+    date_str = datetime.now(ET).strftime("%a %b %d")
+    wins     = winrate_data["wins"]
+    losses   = winrate_data["losses"]
+    neutrals = winrate_data["neutrals"]
+    total    = wins + losses
+    pct      = round(wins / total * 100) if total > 0 else 0
+    streak   = "".join(r["result"] for r in winrate_data["history"][-10:])
+
+    if result_type == "win":
+        verdict = "DELIVERED"
+        icon    = "WIN"
+    elif result_type == "failed":
+        verdict = "FAILED"
+        icon    = "LOSS"
+    else:
+        verdict = "CHOPPY DAY"
+        icon    = "CHOP"
+
+    direction_str = "above" if price_diff > 0 else "below"
+    diff_str      = str(round(abs(price_diff))) + "pts " + direction_str + " MO"
+
+    msg  = "<b>EOD Score - " + date_str + "</b>\n"
+    msg += "Bias: <b>" + bias_direction.upper() + "</b> - [" + icon + "] " + verdict + "\n"
+    msg += "Close: <b>" + str(round(current_price, 2)) + "</b> (" + diff_str + ")\n"
+    msg += "MO: <b>" + str(round(midnight_open, 2)) + "</b>\n"
+    msg += "---------------------\n"
+    msg += "<b>Win Rate: " + str(pct) + "%</b> (" + str(wins) + "W / " + str(losses) + "L / " + str(neutrals) + " Chop)\n"
+    msg += "Last 10: " + streak + "\n"
+    msg += "<i>W=Win C=Chop L=Loss N=Neutral</i>\n"
+    msg += "<i>Not financial advice.</i>"
+    return msg
 
 def get_winrate_summary():
     data = load_winrate()
@@ -272,14 +338,9 @@ def get_session_windows():
     }
 
 def get_midnight_open(midnight_utc):
-    # Try 1m data first with wider window
-    candles = fetch_candles_yf(midnight_utc, midnight_utc + timedelta(minutes=30), "1m")
-    if candles:
-        return candles[0]["open"]
-    # Fallback to 5m data
-    candles = fetch_candles_yf(midnight_utc, midnight_utc + timedelta(hours=1), "5m")
+    candles = fetch_candles_yf(midnight_utc, midnight_utc + timedelta(minutes=5), "1m")
     return candles[0]["open"] if candles else None
-  
+
 def get_session_hl(start_utc, end_utc):
     candles = fetch_candles_yf(start_utc, end_utc, "1m")
     if not candles:
@@ -627,9 +688,22 @@ def run_morning_bias():
     print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running morning bias job...")
     windows = get_session_windows()
     try:
-        midnight_open = get_midnight_open(windows["midnight_open_utc"])
-        asia_high, asia_low, _ = get_session_hl(windows["asia_start_utc"], windows["asia_end_utc"])
-        london_high, london_low, london_close = get_session_hl(windows["london_start_utc"], windows["london_end_utc"])
+        # Try TradingView webhook levels first (accurate), fall back to Yahoo Finance
+        tv = load_tv_levels()
+        if tv.get("midnight_open") and tv.get("asia_high") and tv.get("london_high"):
+            print("  -> Using TradingView webhook levels")
+            midnight_open = tv["midnight_open"]
+            asia_high     = tv["asia_high"]
+            asia_low      = tv["asia_low"]
+            london_high   = tv["london_high"]
+            london_low    = tv["london_low"]
+            london_close  = london_low  # approximate
+            _             = None
+        else:
+            print("  -> No TV webhook levels found, using Yahoo Finance")
+            midnight_open = get_midnight_open(windows["midnight_open_utc"])
+            asia_high, asia_low, _ = get_session_hl(windows["asia_start_utc"], windows["asia_end_utc"])
+            london_high, london_low, london_close = get_session_hl(windows["london_start_utc"], windows["london_end_utc"])
         pdh, pdl = get_previous_day_hl()
         current_price = get_current_price() or midnight_open
         screenshot = take_chart_screenshot()
@@ -709,14 +783,25 @@ def run_eod_score():
         if not current_price or not mo or not direction:
             send_telegram_text("EOD Score: No bias data for today.")
             return
-        if direction == "bullish":
-            delivered = current_price > mo
+
+        price_diff = current_price - mo  # positive = above MO, negative = below MO
+        abs_diff   = abs(price_diff)
+
+        # Scoring logic:
+        # CHOPPY  — price closed within 75pts of MO either direction
+        # WIN     — price moved 100+ pts in bias direction
+        # FAILED  — price moved 100+ pts against bias direction
+        if abs_diff <= 75:
+            result_type = "choppy"
+        elif direction == "bullish":
+            result_type = "win" if price_diff >= 100 else "failed"
         elif direction == "bearish":
-            delivered = current_price < mo
+            result_type = "win" if price_diff <= -100 else "failed"
         else:
-            delivered = False
-        winrate_data = record_result(direction, delivered)
-        msg = build_eod_message(direction, delivered, current_price, mo, winrate_data)
+            result_type = "choppy"
+
+        winrate_data = record_result_v2(direction, result_type)
+        msg = build_eod_message_v2(direction, result_type, current_price, mo, price_diff, winrate_data)
         send_telegram_text(msg)
     except Exception as e:
         try:
@@ -741,9 +826,9 @@ def main():
 
     # Uncomment to test immediately
     # run_news_job()
-    run_morning_bias()
+    # run_morning_bias()
     # run_nyo_update()
-    # run_eod_score()
+    run_eod_score()
 
     while True:
         schedule.run_pending()
