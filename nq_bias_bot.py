@@ -94,7 +94,8 @@ def get_winrate_summary():
 
 # FOREX FACTORY NEWS SCRAPER
 
-def get_forex_factory_news():
+def get_forex_factory_news(days=3):
+    """Scrape today + next N days of high/medium impact USD news from Forex Factory."""
     try:
         url = "https://www.forexfactory.com/calendar"
         headers = {
@@ -104,13 +105,37 @@ def get_forex_factory_news():
         resp = requests.get(url, headers=headers, timeout=15)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
-        events = []
+
+        today_et = datetime.now(ET).date()
+        cutoff = today_et + timedelta(days=days)
+
+        all_events = {}  # keyed by date string
         rows = soup.select("tr.calendar__row")
         current_time = None
+        current_date = today_et
+
         for row in rows:
+            # Check for date header row
+            date_el = row.select_one(".calendar__cell.calendar__date span")
+            if date_el and date_el.text.strip():
+                try:
+                    parsed_date = datetime.strptime(date_el.text.strip() + " " + str(today_et.year), "%a %b %d %Y").date()
+                    if parsed_date < today_et:
+                        parsed_date = parsed_date.replace(year=today_et.year + 1)
+                    current_date = parsed_date
+                    current_time = None
+                except Exception:
+                    pass
+
+            if current_date > cutoff:
+                break
+            if current_date < today_et:
+                continue
+
             currency = row.select_one(".calendar__currency")
             if not currency or currency.text.strip() != "USD":
                 continue
+
             impact_el = row.select_one(".calendar__impact span")
             if not impact_el:
                 continue
@@ -121,17 +146,20 @@ def get_forex_factory_news():
                 impact = "orange"
             else:
                 continue
+
             time_el = row.select_one(".calendar__time")
             if time_el and time_el.text.strip():
                 current_time = time_el.text.strip()
+
             event_el = row.select_one(".calendar__event-title")
             event_name = event_el.text.strip() if event_el else "Unknown"
             forecast_el = row.select_one(".calendar__forecast")
             previous_el = row.select_one(".calendar__previous")
             forecast = forecast_el.text.strip() if forecast_el else "-"
             previous = previous_el.text.strip() if previous_el else "-"
+
             during_kill_zone = False
-            if current_time:
+            if current_time and str(current_date) == str(today_et):
                 try:
                     t = current_time.upper().strip()
                     parsed = datetime.strptime(t, "%I:%M%p")
@@ -139,46 +167,69 @@ def get_forex_factory_news():
                         during_kill_zone = True
                 except Exception:
                     pass
-            events.append({
+
+            date_key = current_date.strftime("%a %b %d")
+            if date_key not in all_events:
+                all_events[date_key] = []
+            all_events[date_key].append({
                 "time": current_time or "All Day",
                 "event": event_name,
                 "impact": impact,
                 "forecast": forecast,
                 "previous": previous,
                 "during_kill_zone": during_kill_zone,
+                "date": current_date,
             })
-        return events
+
+        return all_events
+
     except Exception as e:
         print("Forex Factory scrape failed: " + str(e))
-        return []
+        return {}
 
-def build_news_message(events):
-    date_str = datetime.now(ET).strftime("%a %b %d")
-    msg = "<b>Macro News - " + date_str + "</b>\n"
+
+def build_news_message(all_events):
+    today_et = datetime.now(ET).date()
+    today_str = today_et.strftime("%a %b %d")
+    msg = "<b>Macro News - " + today_str + "</b>\n"
     msg += "---------------------\n"
-    if not events:
-        msg += "No high impact USD news today\n"
+
+    if not all_events:
+        msg += "No high/medium impact USD news found\n"
         msg += "---------------------\n"
         msg += "<i>Not financial advice.</i>"
         return msg
-    has_kill_zone = any(e["during_kill_zone"] for e in events)
-    for e in events:
-        icon = "<b>[RED]</b>" if e["impact"] == "red" else "<b>[ORA]</b>"
-        kz = " -- KILL ZONE!" if e["during_kill_zone"] else ""
-        msg += icon + " <b>" + e["time"] + "</b> - " + e["event"] + kz + "\n"
-        if e["forecast"] != "-" or e["previous"] != "-":
-            msg += "   Forecast: " + e["forecast"] + " | Prev: " + e["previous"] + "\n"
+
+    has_kill_zone = False
+
+    for date_key, events in all_events.items():
+        is_today = date_key == today_str
+        label = "<b>TODAY:</b>" if is_today else "<b>" + date_key + ":</b>"
+        msg += label + "\n"
+
+        for e in events:
+            icon = "<b>[RED]</b>" if e["impact"] == "red" else "<b>[ORA]</b>"
+            kz = " <b>-- KILL ZONE --</b>" if e["during_kill_zone"] else ""
+            if e["during_kill_zone"]:
+                has_kill_zone = True
+            msg += icon + " <b>" + e["time"] + "</b> - " + e["event"] + kz + "\n"
+            if is_today and (e["forecast"] != "-" or e["previous"] != "-"):
+                msg += "   Forecast: " + e["forecast"] + " | Prev: " + e["previous"] + "\n"
+
+        msg += "\n"
+
     msg += "---------------------\n"
     if has_kill_zone:
         msg += "<b>High impact news during NY Kill Zone - trade carefully</b>\n"
     msg += "<i>Not financial advice.</i>"
     return msg
 
+
 def run_news_job():
     print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running macro news job...")
     try:
-        events = get_forex_factory_news()
-        msg = build_news_message(events)
+        all_events = get_forex_factory_news(days=2)
+        msg = build_news_message(all_events)
         send_telegram_text(msg)
     except Exception as e:
         try:
@@ -680,7 +731,7 @@ def main():
 
     # Uncomment to test immediately
     run_news_job()
-    run_morning_bias()
+    # run_morning_bias()
     # run_nyo_update()
     # run_eod_score()
 
