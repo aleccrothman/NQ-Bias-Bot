@@ -272,12 +272,13 @@ def get_forex_factory_news(days=3):
 def build_news_message(all_events):
     today_et = datetime.now(ET).date()
     today_str = today_et.strftime("%a %b %d")
-    msg = "<b>Macro News - " + today_str + "</b>\n"
-    msg += "---------------------\n"
+    msg  = "━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "📰 <b>Macro Calendar | " + today_str + "</b>\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
 
     if not all_events:
-        msg += "No high/medium impact USD news found\n"
-        msg += "---------------------\n"
+        msg += "✅ No high/medium impact USD news today\n"
+        msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
         msg += "<i>Not financial advice.</i>"
         return msg
 
@@ -285,23 +286,28 @@ def build_news_message(all_events):
 
     for date_key, events in all_events.items():
         is_today = date_key == today_str
-        label = "<b>TODAY:</b>" if is_today else "<b>" + date_key + ":</b>"
-        msg += label + "\n"
+        if is_today:
+            msg += "🗓 <b>TODAY</b>\n"
+        else:
+            msg += "🗓 <b>" + date_key + "</b>\n"
 
         for e in events:
-            icon = "<b>[RED]</b>" if e["impact"] == "red" else "<b>[ORA]</b>"
-            kz = " <b>-- KILL ZONE --</b>" if e["during_kill_zone"] else ""
+            if e["impact"] == "red":
+                impact_icon = "🔴"
+            else:
+                impact_icon = "🟠"
+            kz = " ⚡<b>KILL ZONE</b>" if e["during_kill_zone"] else ""
             if e["during_kill_zone"]:
                 has_kill_zone = True
-            msg += icon + " <b>" + e["time"] + "</b> - " + e["event"] + kz + "\n"
+            msg += impact_icon + " <b>" + e["time"] + "</b>  " + e["event"] + kz + "\n"
             if is_today and (e["forecast"] != "-" or e["previous"] != "-"):
-                msg += "   Forecast: " + e["forecast"] + " | Prev: " + e["previous"] + "\n"
+                msg += "   📊 F: " + e["forecast"] + "  P: " + e["previous"] + "\n"
 
         msg += "\n"
 
-    msg += "---------------------\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
     if has_kill_zone:
-        msg += "<b>High impact news during NY Kill Zone - trade carefully</b>\n"
+        msg += "⚠️ <b>News during NY Kill Zone — trade carefully</b>\n"
     msg += "<i>Not financial advice.</i>"
     return msg
 
@@ -497,32 +503,49 @@ def build_morning_caption(current_price, midnight_open, asia_high, asia_low,
     if grade == "A" and ifvgs:
         grade = "A+"
 
-    msg = "<b>NQ1! 15m - " + date_str + "</b>\n"
-    msg += "<b>" + bias["overall"] + "</b> (" + score_str + ") | Grade: <b>" + grade + "</b>\n"
-    msg += "---------------------\n"
-    msg += "Price:  <b>" + str(round(current_price, 2)) + "</b>\n"
-    msg += "MO:     <b>" + str(round(midnight_open, 2)) + "</b>\n"
+    # Day of week context
+    dow = datetime.now(ET).strftime("%A")
+    dow_notes = {
+        "Monday":    "Mon — Watch for manipulation",
+        "Tuesday":   "Tue — Typical delivery day",
+        "Wednesday": "Wed — Typical delivery day",
+        "Thursday":  "Thu — Typical delivery day",
+        "Friday":    "Fri — Watch for reversals",
+    }
+    dow_note = dow_notes.get(dow, "")
+    bias_icon = "🟢" if "BULLISH" in bias["overall"] else "🔴" if "BEARISH" in bias["overall"] else "⚪"
+    vote_icons = {"+1": "🟢", "-1": "🔴", " 0": "⚪"}
+
+    msg  = "━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "📊 <b>NQ1! Daily Bias | " + date_str + "</b>\n"
+    if dow_note:
+        msg += "<i>" + dow_note + "</i>\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += bias_icon + " <b>" + bias["overall"] + "</b>  |  " + score_str + "  |  Grade: <b>" + grade + "</b>\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "📍 Price:   <b>" + str(round(current_price, 2)) + "</b>\n"
+    msg += "🕛 MO:      <b>" + str(round(midnight_open, 2)) + "</b>\n"
     if pdh and pdl:
-        msg += "PDH:    <b>" + str(round(pdh, 2)) + "</b>  PDL: <b>" + str(round(pdl, 2)) + "</b>\n"
-    msg += "Asia:   H <b>" + str(round(asia_high, 2)) + "</b> / L <b>" + str(round(asia_low, 2)) + "</b>\n"
-    msg += "London: H <b>" + str(round(london_high, 2)) + "</b> / L <b>" + str(round(london_low, 2)) + "</b>\n"
-    msg += "---------------------\n"
-
-    labels = {"midnight_open": "MO", "asia_range": "Asia", "london_break": "London"}
-    icons = {"BULL": "BULL", "BEAR": "BEAR", "NEUT": "NEUT"}
+        msg += "📅 PDH:     <b>" + str(round(pdh, 2)) + "</b>   PDL: <b>" + str(round(pdl, 2)) + "</b>\n"
+    msg += "🌏 Asia:    H <b>" + str(round(asia_high, 2)) + "</b>  L <b>" + str(round(asia_low, 2)) + "</b>\n"
+    msg += "🌍 London:  H <b>" + str(round(london_high, 2)) + "</b>  L <b>" + str(round(london_low, 2)) + "</b>\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "<b>Signal Breakdown:</b>\n"
+    labels = {"midnight_open": "MO     ", "asia_range": "Asia   ", "london_break": "London "}
     for key, (vote, direction, detail) in bias["signals"].items():
-        msg += vote + " " + labels[key] + ": <i>" + detail + "</i>\n"
-
-    msg += "---------------------\n"
-    msg += "<b>1H iFVGs +-" + str(IFVG_RANGE_PTS) + "pts:</b>\n"
+        icon = vote_icons.get(vote.strip(), "⚪")
+        msg += icon + " " + labels[key] + " <i>" + detail + "</i>\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "<b>1H iFVGs ±" + str(IFVG_RANGE_PTS) + "pts:</b>\n"
     if not ifvgs:
-        msg += "None nearby\n"
+        msg += "• None nearby\n"
     else:
         for z in ifvgs:
-            side = "Support" if z["relation"] == "below" else "Resistance"
-            msg += str(round(z["bottom"], 2)) + "-" + str(round(z["top"], 2)) + " " + side + " (" + str(round(z["dist"])) + "pts) " + z["target"] + "\n"
-
-    msg += "---------------------\n"
+            zone_icon = "🟩" if z["relation"] == "below" else "🟥"
+            side = "Support ↑" if z["relation"] == "below" else "Resistance ↓"
+            msg += zone_icon + " " + str(round(z["bottom"], 2)) + " – " + str(round(z["top"], 2)) + "  " + side + "  (" + str(round(z["dist"])) + "pts)\n"
+            msg += "   " + z["target"] + "\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
     msg += get_winrate_summary()
     msg += "<i>Not financial advice.</i>"
     return msg
@@ -548,22 +571,26 @@ def build_nyo_message(current_price, bias, midnight_open,
         arrow = "above" if diff > 0 else "below"
         return name + ": " + str(round(level, 2)) + " (" + str(round(abs(diff))) + "pts " + arrow + ")"
 
-    msg = "<b>NYO Update - " + date_str + "</b>\n"
-    msg += "<b>" + bias["overall"] + "</b> | Price: <b>" + str(round(current_price, 2)) + "</b>\n"
-    msg += "---------------------\n"
-    msg += status + "\n"
-    msg += "---------------------\n"
+    bias_icon = "🟢" if "BULLISH" in bias["overall"] else "🔴" if "BEARISH" in bias["overall"] else "⚪"
+    status_icon = "✅" if "respected" in status else "⚠️" if "challenged" in status else "⚪"
+
+    msg  = "━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "🔔 <b>NYO Update | " + date_str + "</b>\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += bias_icon + " <b>" + bias["overall"] + "</b>  |  📍 <b>" + str(round(current_price, 2)) + "</b>\n"
+    msg += status_icon + " " + status + "\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
     msg += "<b>Price vs Key Levels:</b>\n"
-    msg += dist_label(current_price, mo, "MO") + "\n"
+    msg += "🕛 " + dist_label(current_price, mo, "MO") + "\n"
     if pdh and pdl:
-        msg += dist_label(current_price, pdh, "PDH") + "\n"
-        msg += dist_label(current_price, pdl, "PDL") + "\n"
-    msg += dist_label(current_price, asia_high, "Asia H") + "\n"
-    msg += dist_label(current_price, asia_low, "Asia L") + "\n"
-    msg += dist_label(current_price, london_high, "London H") + "\n"
-    msg += dist_label(current_price, london_low, "London L") + "\n"
-    msg += "---------------------\n"
-    msg += "<i>NY Kill Zone: 7-10 AM ET</i>\n"
+        msg += "📅 " + dist_label(current_price, pdh, "PDH") + "\n"
+        msg += "📅 " + dist_label(current_price, pdl, "PDL") + "\n"
+    msg += "🌏 " + dist_label(current_price, asia_high, "Asia H") + "\n"
+    msg += "🌏 " + dist_label(current_price, asia_low, "Asia L") + "\n"
+    msg += "🌍 " + dist_label(current_price, london_high, "London H") + "\n"
+    msg += "🌍 " + dist_label(current_price, london_low, "London L") + "\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "⏰ <i>NY Kill Zone: 7–10 AM ET</i>\n"
     msg += "<i>Not financial advice.</i>"
     return msg
 
@@ -840,6 +867,92 @@ def run_eod_score():
             pass
 
 
+
+def send_welcome_message(chat_id):
+    """Send welcome message to new group members."""
+    msg  = "━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "👋 <b>Welcome to Smokey Bias!</b>\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "Here is what you will receive every trading day:\n\n"
+    msg += "🕖 <b>7:00 AM ET — Macro Calendar</b>\n"
+    msg += "High and medium impact USD news for today and the next 2 days. Kill zone events are flagged.\n\n"
+    msg += "📊 <b>8:00 AM ET — Daily Bias</b>\n"
+    msg += "NQ1! bias based on Midnight Open, Asia H/L, London H/L, and 1H iFVGs. Includes a chart screenshot and confidence grade (A+/A/B/C/D).\n\n"
+    msg += "🔔 <b>9:00 AM ET — NYO Update</b>\n"
+    msg += "Is price respecting the bias? Live price vs all key levels heading into the NY Kill Zone.\n\n"
+    msg += "📋 <b>4:00 PM ET — EOD Score</b>\n"
+    msg += "Did the bias deliver? Win rate tracker updated daily.\n\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "<b>Grade System:</b>\n"
+    msg += "A+ = All 3 signals + iFVG in zone (best setup)\n"
+    msg += "A  = All 3 signals agree\n"
+    msg += "B  = 2/3 signals agree\n"
+    msg += "C  = 1/3 signals\n"
+    msg += "D  = Mixed/Neutral\n\n"
+    msg += "<b>EOD Scoring:</b>\n"
+    msg += "W = Price moved 100+ pts in bias direction\n"
+    msg += "C = Choppy — price closed within 75pts of MO\n"
+    msg += "L = Price moved 100+ pts against bias\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "<i>Not financial advice. Always trade your own plan.</i>"
+
+    url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendMessage"
+    requests.post(url, json={
+        "chat_id": chat_id,
+        "text": msg,
+        "parse_mode": "HTML",
+    }, timeout=10)
+
+
+def run_weekend_recap():
+    """Saturday morning — weekly recap and what to watch next week."""
+    print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running weekend recap...")
+    try:
+        data = load_winrate()
+        wins     = data["wins"]
+        losses   = data["losses"]
+        neutrals = data["neutrals"]
+        total    = wins + losses
+
+        # Get this week's history (last 5 entries)
+        week_history = data["history"][-5:] if data["history"] else []
+        week_streak  = "".join(r["result"] for r in week_history)
+
+        now_et   = datetime.now(ET)
+        date_str = now_et.strftime("%a %b %d")
+
+        msg  = "━━━━━━━━━━━━━━━━━━━━━━\n"
+        msg += "📅 <b>Weekly Recap | " + date_str + "</b>\n"
+        msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
+        msg += "<b>This Week:</b>  " + week_streak + "\n"
+        msg += "W=Win  C=Chop  L=Loss\n\n"
+
+        if total >= 10:
+            pct = round(wins / total * 100)
+            msg += "<b>Overall Win Rate: " + str(pct) + "%</b>\n"
+            msg += str(wins) + "W / " + str(losses) + "L / " + str(neutrals) + "C\n"
+        else:
+            remaining = 10 - total
+            msg += "<i>Building sample size (" + str(remaining) + " more days needed)</i>\n"
+
+        msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
+        msg += "<b>What to Watch Next Week:</b>\n"
+        msg += "• Sunday 6 PM ET — NQ opens, watch for NWOG\n"
+        msg += "• Check Forex Factory for high impact events\n"
+        msg += "• Note this week high/low as liquidity targets\n"
+        msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
+        msg += "Have a great weekend! 🏖\n"
+        msg += "<i>Not financial advice.</i>"
+
+        send_telegram_text(msg)
+
+    except Exception as e:
+        try:
+            send_telegram_text("<b>Weekend Recap Error:</b> " + str(e))
+        except Exception:
+            pass
+
+
 # SCHEDULER
 
 def main():
@@ -853,6 +966,7 @@ def main():
     schedule.every().day.at("12:00").do(run_morning_bias)
     schedule.every().day.at("13:00").do(run_nyo_update)
     schedule.every().day.at("20:00").do(run_eod_score)
+    schedule.every().saturday.at("14:00").do(run_weekend_recap)
 
     # Uncomment to test immediately
     # run_news_job()
