@@ -354,8 +354,13 @@ def get_session_windows():
     }
 
 def get_midnight_open(midnight_utc):
-    candles = fetch_candles_yf(midnight_utc, midnight_utc + timedelta(minutes=5), "1m")
-    return candles[0]["open"] if candles else None
+    # Try progressively wider windows to find the midnight open
+    for interval, hours in [("1m", 0.5), ("1m", 1), ("5m", 1), ("5m", 2)]:
+        candles = fetch_candles_yf(midnight_utc, midnight_utc + timedelta(hours=hours), interval)
+        if candles:
+            print("  -> Midnight open found using " + interval + " interval")
+            return candles[0]["open"]
+    return None
 
 def get_session_hl(start_utc, end_utc):
     candles = fetch_candles_yf(start_utc, end_utc, "1m")
@@ -765,13 +770,35 @@ def run_morning_bias():
         current_price = get_current_price() or midnight_open
         screenshot = take_chart_screenshot()
 
-        if not all([midnight_open, asia_high, asia_low, london_high, london_low, current_price]):
-            caption = "NQ Bias Bot: Missing session data - market may be closed."
+        # Log what we have
+        missing = []
+        if not midnight_open: missing.append("midnight_open")
+        if not asia_high: missing.append("asia_high")
+        if not asia_low: missing.append("asia_low")
+        if not london_high: missing.append("london_high")
+        if not london_low: missing.append("london_low")
+        if not current_price: missing.append("current_price")
+
+        if missing:
+            print("  -> Missing data: " + str(missing))
+
+        # Only abort if we are missing critical levels (midnight open + at least one session)
+        critical_missing = not midnight_open or not current_price or (not asia_high and not london_high)
+        if critical_missing:
+            caption = "NQ Bias Bot: Missing session data - " + str(missing)
             if screenshot and screenshot.exists():
                 send_telegram_photo(screenshot, caption)
             else:
                 send_telegram_text(caption)
             return
+
+        # Fill any missing values with approximations
+        if not asia_high and london_high:
+            asia_high = london_high
+            asia_low  = london_low
+        if not london_high and asia_high:
+            london_high = asia_high
+            london_low  = asia_low
 
         bias = compute_bias(midnight_open, current_price, asia_high, asia_low, london_high, london_low, london_close)
         ifvgs = detect_ifvgs(current_price)
@@ -963,7 +990,7 @@ def main():
     print("  20:00 UTC (16:00 ET) - EOD score + win rate")
 
     schedule.every().day.at("11:00").do(run_news_job)
-    schedule.every().day.at("12:30").do(run_morning_bias)
+    schedule.every().day.at("12:00").do(run_morning_bias)
     schedule.every().day.at("13:00").do(run_nyo_update)
     schedule.every().day.at("20:00").do(run_eod_score)
     schedule.every().saturday.at("14:00").do(run_weekend_recap)
