@@ -102,7 +102,7 @@ def record_result_v2(bias_direction, result_type):
         result = "L"
     else:
         data["neutrals"] += 1
-        result = "C" if result_type == "choppy" else "N"
+        result = "C"
     data["history"].append({"date": date_str, "bias": bias_direction, "result_type": result_type, "result": result})
     data["history"] = data["history"][-30:]
     save_winrate(data)
@@ -115,7 +115,6 @@ def build_eod_message_v2(bias_direction, result_type, current_price, midnight_op
     losses   = winrate_data["losses"]
     neutrals = winrate_data["neutrals"]
     total    = wins + losses
-    pct      = round(wins / total * 100) if total > 0 else 0
     streak   = "".join(r["result"] for r in winrate_data["history"][-10:])
 
     if result_type == "win":
@@ -136,9 +135,16 @@ def build_eod_message_v2(bias_direction, result_type, current_price, midnight_op
     msg += "Close: <b>" + str(round(current_price, 2)) + "</b> (" + diff_str + ")\n"
     msg += "MO: <b>" + str(round(midnight_open, 2)) + "</b>\n"
     msg += "---------------------\n"
-    msg += "<b>Win Rate: " + str(pct) + "%</b> (" + str(wins) + "W / " + str(losses) + "L / " + str(neutrals) + " Chop)\n"
-    msg += "Last 10: " + streak + "\n"
-    msg += "<i>W=Win C=Chop L=Loss N=Neutral</i>\n"
+    msg += str(wins) + "W / " + str(losses) + "L / " + str(neutrals) + "C\n"
+    if total >= 10:
+        pct = round(wins / total * 100)
+        msg += "<b>Win Rate: " + str(pct) + "%</b> (" + str(total) + " directional days)\n"
+    else:
+        remaining = 10 - total
+        msg += "<i>Building sample size (" + str(remaining) + " more days needed)</i>\n"
+    if streak:
+        msg += "Last " + str(len(winrate_data["history"][-10:])) + ": " + streak + "\n"
+    msg += "<i>W=Win C=Chop L=Loss</i>\n"
     msg += "<i>Not financial advice.</i>"
     return msg
 
@@ -148,13 +154,17 @@ def get_winrate_summary():
     losses = data["losses"]
     neutrals = data["neutrals"]
     total = wins + losses
-    pct = (wins / total * 100) if total > 0 else 0
     msg = "<b>Bias Win Rate</b>\n"
-    msg += str(wins) + "W  " + str(losses) + "L  " + str(neutrals) + "N\n"
-    msg += "<b>" + str(round(pct)) + "% accuracy</b> (" + str(total) + " directional days)\n"
-    if data["history"]:
+    msg += str(wins) + "W  " + str(losses) + "L  " + str(neutrals) + "C\n"
+    if total >= 10:
+        pct = round(wins / total * 100)
+        msg += "<b>" + str(pct) + "% accuracy</b> (" + str(total) + " directional days)\n"
+    else:
+        remaining = 10 - total
+        msg += "<i>Building sample size (" + str(remaining) + " more days needed)</i>\n"
+    if data["history"] and len(data["history"]) >= 3:
         streak = "".join(r["result"] for r in data["history"][-10:])
-        msg += "Last 10: " + streak + "\n"
+        msg += "Last " + str(len(data["history"][-10:])) + ": " + streak + "\n"
     return msg
 
 
@@ -457,7 +467,22 @@ def compute_bias(midnight_open, current_price, asia_high, asia_low, london_high,
     else:
         overall, direction = "NEUTRAL / MIXED", "neutral"
 
-    return {"overall": overall, "score": score, "signals": signals, "direction": direction}
+    # Confidence grade (DodgyDD A+ setup logic)
+    # A+ = all 3 signals agree AND iFVG in zone (checked later)
+    # A  = all 3 signals agree
+    # B  = 2/3 signals agree
+    # C  = 1/3 or mixed
+    abs_score = abs(score)
+    if abs_score == 3:
+        grade = "A"   # upgraded to A+ if iFVG present (done in build_morning_caption)
+    elif abs_score == 2:
+        grade = "B"
+    elif abs_score == 1:
+        grade = "C"
+    else:
+        grade = "D"
+
+    return {"overall": overall, "score": score, "signals": signals, "direction": direction, "grade": grade}
 
 
 # MESSAGE BUILDERS
@@ -467,8 +492,13 @@ def build_morning_caption(current_price, midnight_open, asia_high, asia_low,
     date_str = datetime.now(ET).strftime("%a %b %d")
     score_str = ("+" if bias["score"] > 0 else "") + str(bias["score"]) + "/3"
 
+    # Upgrade to A+ if all 3 signals agree AND iFVG nearby
+    grade = bias.get("grade", "C")
+    if grade == "A" and ifvgs:
+        grade = "A+"
+
     msg = "<b>NQ1! 15m - " + date_str + "</b>\n"
-    msg += "<b>" + bias["overall"] + "</b> (" + score_str + ")\n"
+    msg += "<b>" + bias["overall"] + "</b> (" + score_str + ") | Grade: <b>" + grade + "</b>\n"
     msg += "---------------------\n"
     msg += "Price:  <b>" + str(round(current_price, 2)) + "</b>\n"
     msg += "MO:     <b>" + str(round(midnight_open, 2)) + "</b>\n"
