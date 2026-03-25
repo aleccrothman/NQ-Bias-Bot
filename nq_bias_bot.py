@@ -963,14 +963,14 @@ def main():
     print("  20:00 UTC (16:00 ET) - EOD score + win rate")
 
     schedule.every().day.at("11:00").do(run_news_job)
-    schedule.every().day.at("12:00").do(run_morning_bias)
+    schedule.every().day.at("12:30").do(run_morning_bias)
     schedule.every().day.at("13:00").do(run_nyo_update)
     schedule.every().day.at("20:00").do(run_eod_score)
     schedule.every().saturday.at("14:00").do(run_weekend_recap)
 
     # Uncomment to test immediately
     # run_news_job()
-    # run_morning_bias()
+    run_morning_bias()
     # run_nyo_update()
     # run_eod_score()
 
