@@ -755,17 +755,43 @@ def compress_screenshot(image_path):
 # TELEGRAM
 
 def send_telegram_photo(image_path, caption):
+    # Verify file exists and has content
+    if not image_path or not image_path.exists():
+        print("  -> No screenshot file found, sending text only")
+        send_telegram_text(caption)
+        return
+    if image_path.stat().st_size < 1000:
+        print("  -> Screenshot file too small (" + str(image_path.stat().st_size) + " bytes), sending text only")
+        send_telegram_text(caption)
+        return
+
     compressed = compress_screenshot(image_path)
+
+    # Verify compressed file
+    if not compressed.exists() or compressed.stat().st_size < 1000:
+        print("  -> Compressed file invalid, sending text only")
+        send_telegram_text(caption)
+        return
+
     url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendPhoto"
     for chat_id in [TELEGRAM_CHAT_ID, TELEGRAM_CHANNEL_ID]:
         if not chat_id:
             continue
-        with open(compressed, "rb") as img:
-            requests.post(url, data={
-                "chat_id": chat_id,
-                "caption": caption,
-                "parse_mode": "HTML",
-            }, files={"photo": img}, timeout=30).raise_for_status()
+        try:
+            with open(compressed, "rb") as img:
+                resp = requests.post(url, data={
+                    "chat_id": chat_id,
+                    "caption": caption,
+                    "parse_mode": "HTML",
+                }, files={"photo": img}, timeout=30)
+                if not resp.ok:
+                    print("  -> Photo send failed: " + resp.text)
+                    send_telegram_text(caption)
+                    return
+        except Exception as e:
+            print("  -> Photo send error: " + str(e))
+            send_telegram_text(caption)
+            return
     print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Photo sent.")
 
 def send_telegram_text(message):
