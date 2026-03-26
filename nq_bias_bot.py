@@ -446,10 +446,10 @@ def compute_bias(midnight_open, current_price, asia_high, asia_low, london_high,
     signals, score = {}, 0
 
     if current_price > midnight_open:
-        signals["midnight_open"] = ("+1", "BULL", "Price " + str(round(current_price, 2)) + " > MO " + str(round(midnight_open, 2)))
+        signals["midnight_open"] = ("+1", "BULL", "Price " + str(round(current_price, 2)) + " &gt; MO " + str(round(midnight_open, 2)))
         score += 1
     elif current_price < midnight_open:
-        signals["midnight_open"] = ("-1", "BEAR", "Price " + str(round(current_price, 2)) + " < MO " + str(round(midnight_open, 2)))
+        signals["midnight_open"] = ("-1", "BEAR", "Price " + str(round(current_price, 2)) + " &lt; MO " + str(round(midnight_open, 2)))
         score -= 1
     else:
         signals["midnight_open"] = (" 0", "NEUT", "Price at MO " + str(round(midnight_open, 2)))
@@ -554,7 +554,7 @@ def build_morning_caption(current_price, midnight_open, asia_high, asia_low,
         icon = vote_icons.get(vote.strip(), "⚪")
         msg += icon + " " + labels[key] + " <i>" + detail + "</i>\n"
     msg += "--------------------\n"
-    msg += "<b>1H iFVGs ±" + str(IFVG_RANGE_PTS) + "pts:</b>\n"
+    msg += "<b>1H iFVGs +/-" + str(IFVG_RANGE_PTS) + "pts:</b>\n"
     if not ifvgs:
         msg += "• None nearby\n"
     else:
@@ -624,7 +624,7 @@ def build_nyo_message_with_ifvgs(current_price, bias, midnight_open,
 
     # Insert iFVG section before the last two lines
     ifvg_section = "--------------------\n"
-    ifvg_section += "<b>1H iFVGs ±" + str(IFVG_RANGE_PTS) + "pts:</b>\n"
+    ifvg_section += "<b>1H iFVGs +/-" + str(IFVG_RANGE_PTS) + "pts:</b>\n"
     for z in ifvgs:
         zone_icon = "🟩" if z["relation"] == "below" else "🟥"
         side = "Support (up)" if z["relation"] == "below" else "Resistance (down)"
@@ -1075,10 +1075,10 @@ def main():
     schedule.every().saturday.at("14:00").do(run_weekend_recap)
 
     # Uncomment to test immediately
-    run_news_job()
-    run_morning_bias()
-    run_nyo_update()
-    run_eod_score()
+    # run_news_job()
+     run_morning_bias()
+    # run_nyo_update()
+    # run_eod_score()
 
     while True:
         schedule.run_pending()
