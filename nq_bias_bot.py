@@ -133,7 +133,7 @@ def build_eod_message_v2(bias_direction, result_type, current_price, midnight_op
 
     # Choppy day analysis
     if result_type == "choppy":
-        chop_reason = "Price stayed within 75pts of MO — no clear delivery"
+        chop_reason = "Price stayed within 75pts of MO - no clear delivery"
     elif result_type == "win":
         chop_reason = ""
     else:
@@ -142,7 +142,7 @@ def build_eod_message_v2(bias_direction, result_type, current_price, midnight_op
     msg  = "━━━━━━━━━━━━━━━━━━━━━━\n"
     msg += "📋 <b>EOD Score | " + date_str + "</b>\n"
     msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
-    msg += bias_icon + " Bias: <b>" + bias_direction.upper() + "</b>  →  " + result_icon + " <b>" + verdict + "</b>\n"
+    msg += bias_icon + " Bias: <b>" + bias_direction.upper() + "</b>  -&gt;  " + result_icon + " <b>" + verdict + "</b>\n"
     msg += "Close: <b>" + str(round(current_price, 2)) + "</b>  (" + diff_str + ")\n"
     msg += "MO:    <b>" + str(round(midnight_open, 2)) + "</b>\n"
     if chop_reason:
@@ -185,7 +185,7 @@ def get_winrate_summary():
 
 def get_forex_factory_news(days=3):
     """Fetch today + next N days of high/medium impact USD news from Forex Factory XML feed.
-    Times in XML are GMT — we convert to ET."""
+    Times in XML are GMT - we convert to ET."""
     try:
         import xml.etree.ElementTree as ET_xml
         url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
@@ -320,7 +320,7 @@ def build_news_message(all_events):
 
     msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
     if has_kill_zone:
-        msg += "⚠️ <b>News during NY Kill Zone — trade carefully</b>\n"
+        msg += "⚠️ <b>News during NY Kill Zone - trade carefully</b>\n"
     msg += "<i>Not financial advice.</i>"
     return msg
 
@@ -524,11 +524,11 @@ def build_morning_caption(current_price, midnight_open, asia_high, asia_low,
     # Day of week context
     dow = datetime.now(ET).strftime("%A")
     dow_notes = {
-        "Monday":    "Mon — Watch for manipulation",
-        "Tuesday":   "Tue — Typical delivery day",
-        "Wednesday": "Wed — Typical delivery day",
-        "Thursday":  "Thu — Typical delivery day",
-        "Friday":    "Fri — Watch for reversals",
+        "Monday":    "Mon - Watch for manipulation",
+        "Tuesday":   "Tue - Typical delivery day",
+        "Wednesday": "Wed - Typical delivery day",
+        "Thursday":  "Thu - Typical delivery day",
+        "Friday":    "Fri - Watch for reversals",
     }
     dow_note = dow_notes.get(dow, "")
     bias_icon = "🟢" if "BULLISH" in bias["overall"] else "🔴" if "BEARISH" in bias["overall"] else "⚪"
@@ -560,8 +560,8 @@ def build_morning_caption(current_price, midnight_open, asia_high, asia_low,
     else:
         for z in ifvgs:
             zone_icon = "🟩" if z["relation"] == "below" else "🟥"
-            side = "Support ↑" if z["relation"] == "below" else "Resistance ↓"
-            msg += zone_icon + " " + str(round(z["bottom"], 2)) + " – " + str(round(z["top"], 2)) + "  " + side + "  (" + str(round(z["dist"])) + "pts)\n"
+            side = "Support (up)" if z["relation"] == "below" else "Resistance (down)"
+            msg += zone_icon + " " + str(round(z["bottom"], 2)) + " - " + str(round(z["top"], 2)) + "  " + side + "  (" + str(round(z["dist"])) + "pts)\n"
             msg += "   " + z["target"] + "\n"
     msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
     msg += get_winrate_summary()
@@ -608,7 +608,7 @@ def build_nyo_message(current_price, bias, midnight_open,
     msg += "🌍 " + dist_label(current_price, london_high, "London H") + "\n"
     msg += "🌍 " + dist_label(current_price, london_low, "London L") + "\n"
     msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
-    msg += "⏰ <i>NY Kill Zone: 7–10 AM ET</i>\n"
+    msg += "⏰ <i>NY Kill Zone: 7-10 AM ET</i>\n"
     msg += "<i>Not financial advice.</i>"
     return msg
 
@@ -627,8 +627,8 @@ def build_nyo_message_with_ifvgs(current_price, bias, midnight_open,
     ifvg_section += "<b>1H iFVGs ±" + str(IFVG_RANGE_PTS) + "pts:</b>\n"
     for z in ifvgs:
         zone_icon = "🟩" if z["relation"] == "below" else "🟥"
-        side = "Support ↑" if z["relation"] == "below" else "Resistance ↓"
-        ifvg_section += zone_icon + " " + str(round(z["bottom"], 2)) + " – " + str(round(z["top"], 2)) + "  " + side + "  (" + str(round(z["dist"])) + "pts)\n"
+        side = "Support (up)" if z["relation"] == "below" else "Resistance (down)"
+        ifvg_section += zone_icon + " " + str(round(z["bottom"], 2)) + " - " + str(round(z["top"], 2)) + "  " + side + "  (" + str(round(z["dist"])) + "pts)\n"
         ifvg_section += "   " + z["target"] + "\n"
 
     # Insert before the last kill zone line
@@ -773,6 +773,12 @@ def send_telegram_photo(image_path, caption):
         send_telegram_text(caption)
         return
 
+    # Clean caption of any problematic characters
+    safe_caption = caption.replace("\\", "").replace('\"', '"')
+    # Telegram caption max is 1024 chars
+    if len(safe_caption) > 1024:
+        safe_caption = safe_caption[:1020] + "..."
+
     url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendPhoto"
     for chat_id in [TELEGRAM_CHAT_ID, TELEGRAM_CHANNEL_ID]:
         if not chat_id:
@@ -781,29 +787,46 @@ def send_telegram_photo(image_path, caption):
             with open(compressed, "rb") as img:
                 resp = requests.post(url, data={
                     "chat_id": chat_id,
-                    "caption": caption,
+                    "caption": safe_caption,
                     "parse_mode": "HTML",
                 }, files={"photo": img}, timeout=30)
                 if not resp.ok:
                     print("  -> Photo send failed: " + resp.text)
-                    send_telegram_text(caption)
+                    # Try without HTML parsing
+                    with open(compressed, "rb") as img2:
+                        resp2 = requests.post(url, data={
+                            "chat_id": chat_id,
+                            "caption": safe_caption[:1024],
+                        }, files={"photo": img2}, timeout=30)
+                        if not resp2.ok:
+                            send_telegram_text(safe_caption)
                     return
         except Exception as e:
             print("  -> Photo send error: " + str(e))
-            send_telegram_text(caption)
+            send_telegram_text(safe_caption)
             return
     print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Photo sent.")
 
 def send_telegram_text(message):
     url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendMessage"
+    safe_message = message.replace("\\", "").replace('\"', '"')
     for chat_id in [TELEGRAM_CHAT_ID, TELEGRAM_CHANNEL_ID]:
         if not chat_id:
             continue
-        requests.post(url, json={
-            "chat_id": chat_id,
-            "text": message,
-            "parse_mode": "HTML",
-        }, timeout=10).raise_for_status()
+        try:
+            resp = requests.post(url, json={
+                "chat_id": chat_id,
+                "text": safe_message,
+                "parse_mode": "HTML",
+            }, timeout=10)
+            if not resp.ok:
+                # Try without HTML parsing as fallback
+                requests.post(url, json={
+                    "chat_id": chat_id,
+                    "text": safe_message,
+                }, timeout=10)
+        except Exception as e:
+            print("  -> Text send error: " + str(e))
     print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Text sent.")
 
 
@@ -935,9 +958,9 @@ def run_eod_score():
         abs_diff   = abs(price_diff)
 
         # Scoring logic:
-        # CHOPPY  — price closed within 75pts of MO either direction
-        # WIN     — price moved 100+ pts in bias direction
-        # FAILED  — price moved 100+ pts against bias direction
+        # CHOPPY  - price closed within 75pts of MO either direction
+        # WIN     - price moved 100+ pts in bias direction
+        # FAILED  - price moved 100+ pts against bias direction
         if abs_diff <= 75:
             result_type = "choppy"
         elif direction == "bullish":
@@ -964,13 +987,13 @@ def send_welcome_message(chat_id):
     msg += "👋 <b>Welcome to Smokey Bias!</b>\n"
     msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
     msg += "Here is what you will receive every trading day:\n\n"
-    msg += "🕖 <b>7:00 AM ET — Macro Calendar</b>\n"
+    msg += "🕖 <b>7:00 AM ET - Macro Calendar</b>\n"
     msg += "High and medium impact USD news for today and the next 2 days. Kill zone events are flagged.\n\n"
-    msg += "📊 <b>8:00 AM ET — Daily Bias</b>\n"
+    msg += "📊 <b>8:00 AM ET - Daily Bias</b>\n"
     msg += "NQ1! bias based on Midnight Open, Asia H/L, London H/L, and 1H iFVGs. Includes a chart screenshot and confidence grade (A+/A/B/C/D).\n\n"
-    msg += "🔔 <b>9:00 AM ET — NYO Update</b>\n"
+    msg += "🔔 <b>9:00 AM ET - NYO Update</b>\n"
     msg += "Is price respecting the bias? Live price vs all key levels heading into the NY Kill Zone.\n\n"
-    msg += "📋 <b>4:00 PM ET — EOD Score</b>\n"
+    msg += "📋 <b>4:00 PM ET - EOD Score</b>\n"
     msg += "Did the bias deliver? Win rate tracker updated daily.\n\n"
     msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
     msg += "<b>Grade System:</b>\n"
@@ -981,7 +1004,7 @@ def send_welcome_message(chat_id):
     msg += "D  = Mixed/Neutral\n\n"
     msg += "<b>EOD Scoring:</b>\n"
     msg += "W = Price moved 100+ pts in bias direction\n"
-    msg += "C = Choppy — price closed within 75pts of MO\n"
+    msg += "C = Choppy - price closed within 75pts of MO\n"
     msg += "L = Price moved 100+ pts against bias\n"
     msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
     msg += "<i>Not financial advice. Always trade your own plan.</i>"
@@ -995,7 +1018,7 @@ def send_welcome_message(chat_id):
 
 
 def run_weekend_recap():
-    """Saturday morning — weekly recap and what to watch next week."""
+    """Saturday morning - weekly recap and what to watch next week."""
     print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running weekend recap...")
     try:
         data = load_winrate()
@@ -1027,7 +1050,7 @@ def run_weekend_recap():
 
         msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
         msg += "<b>What to Watch Next Week:</b>\n"
-        msg += "• Sunday 6 PM ET — NQ opens, watch for NWOG\n"
+        msg += "• Sunday 6 PM ET - NQ opens, watch for NWOG\n"
         msg += "• Check Forex Factory for high impact events\n"
         msg += "• Note this week high/low as liquidity targets\n"
         msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
