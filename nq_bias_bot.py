@@ -25,7 +25,7 @@ TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "-1003726448503")
 
 TV_USERNAME  = os.getenv("TV_USERNAME", "")
 TV_PASSWORD  = os.getenv("TV_PASSWORD", "")
-TV_CHART_URL = "https://www.tradingview.com/chart/hcbriKzA/"
+TV_CHART_URL = "https://www.tradingview.com/chart/hcbriKzA/"  # Your saved 15m NQ chart
 
 SYMBOL          = "NQ=F"
 IFVG_RANGE_PTS  = 100
@@ -118,33 +118,46 @@ def build_eod_message_v2(bias_direction, result_type, current_price, midnight_op
     streak   = "".join(r["result"] for r in winrate_data["history"][-10:])
 
     if result_type == "win":
-        verdict = "DELIVERED"
-        icon    = "WIN"
+        verdict     = "DELIVERED"
+        result_icon = "✅"
     elif result_type == "failed":
-        verdict = "FAILED"
-        icon    = "LOSS"
+        verdict     = "FAILED"
+        result_icon = "❌"
     else:
-        verdict = "CHOPPY DAY"
-        icon    = "CHOP"
+        verdict     = "CHOPPY DAY"
+        result_icon = "⚪"
 
+    bias_icon     = "🟢" if bias_direction == "bullish" else "🔴" if bias_direction == "bearish" else "⚪"
     direction_str = "above" if price_diff > 0 else "below"
     diff_str      = str(round(abs(price_diff))) + "pts " + direction_str + " MO"
 
-    msg  = "<b>EOD Score - " + date_str + "</b>\n"
-    msg += "Bias: <b>" + bias_direction.upper() + "</b> - [" + icon + "] " + verdict + "\n"
-    msg += "Close: <b>" + str(round(current_price, 2)) + "</b> (" + diff_str + ")\n"
-    msg += "MO: <b>" + str(round(midnight_open, 2)) + "</b>\n"
-    msg += "---------------------\n"
-    msg += str(wins) + "W / " + str(losses) + "L / " + str(neutrals) + "C\n"
+    # Choppy day analysis
+    if result_type == "choppy":
+        chop_reason = "Price stayed within 75pts of MO — no clear delivery"
+    elif result_type == "win":
+        chop_reason = ""
+    else:
+        chop_reason = "Price moved against bias direction"
+
+    msg  = "━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "📋 <b>EOD Score | " + date_str + "</b>\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += bias_icon + " Bias: <b>" + bias_direction.upper() + "</b>  →  " + result_icon + " <b>" + verdict + "</b>\n"
+    msg += "Close: <b>" + str(round(current_price, 2)) + "</b>  (" + diff_str + ")\n"
+    msg += "MO:    <b>" + str(round(midnight_open, 2)) + "</b>\n"
+    if chop_reason:
+        msg += "<i>" + chop_reason + "</i>\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += str(wins) + "W  " + str(losses) + "L  " + str(neutrals) + "C\n"
     if total >= 10:
         pct = round(wins / total * 100)
         msg += "<b>Win Rate: " + str(pct) + "%</b> (" + str(total) + " directional days)\n"
     else:
         remaining = 10 - total
-        msg += "<i>Building sample size (" + str(remaining) + " more days needed)</i>\n"
-    if streak:
-        msg += "Last " + str(len(winrate_data["history"][-10:])) + ": " + streak + "\n"
-    msg += "<i>W=Win C=Chop L=Loss</i>\n"
+        msg += "Streak so far: " + streak + "\n"
+        msg += "<i>" + str(remaining) + " more days to unlock win rate %</i>\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "<i>W=Win  C=Chop  L=Loss</i>\n"
     msg += "<i>Not financial advice.</i>"
     return msg
 
@@ -600,6 +613,30 @@ def build_nyo_message(current_price, bias, midnight_open,
     return msg
 
 
+def build_nyo_message_with_ifvgs(current_price, bias, midnight_open,
+                                  asia_high, asia_low, london_high, london_low,
+                                  pdh, pdl, ifvgs):
+    """NYO message with iFVGs included."""
+    base = build_nyo_message(current_price, bias, midnight_open,
+                              asia_high, asia_low, london_high, london_low, pdh, pdl)
+    if not ifvgs:
+        return base
+
+    # Insert iFVG section before the last two lines
+    ifvg_section = "━━━━━━━━━━━━━━━━━━━━━━\n"
+    ifvg_section += "<b>1H iFVGs ±" + str(IFVG_RANGE_PTS) + "pts:</b>\n"
+    for z in ifvgs:
+        zone_icon = "🟩" if z["relation"] == "below" else "🟥"
+        side = "Support ↑" if z["relation"] == "below" else "Resistance ↓"
+        ifvg_section += zone_icon + " " + str(round(z["bottom"], 2)) + " – " + str(round(z["top"], 2)) + "  " + side + "  (" + str(round(z["dist"])) + "pts)\n"
+        ifvg_section += "   " + z["target"] + "\n"
+
+    # Insert before the last kill zone line
+    insert_before = "━━━━━━━━━━━━━━━━━━━━━━\n⏰"
+    base = base.replace(insert_before, ifvg_section + insert_before)
+    return base
+
+
 def build_eod_message(bias_direction, delivered, current_price, midnight_open, winrate_data):
     date_str = datetime.now(ET).strftime("%a %b %d")
     result = "DELIVERED" if delivered else "FAILED"
@@ -839,12 +876,14 @@ def run_nyo_update():
             "direction": today_state["bias"],
             "score": today_state["score"],
         }
-        msg = build_nyo_message(
+        nyo_ifvgs = detect_ifvgs(current_price)
+        msg = build_nyo_message_with_ifvgs(
             current_price, bias,
             today_state["midnight_open"],
             today_state["asia_high"], today_state["asia_low"],
             today_state["london_high"], today_state["london_low"],
             today_state["pdh"], today_state["pdl"],
+            nyo_ifvgs,
         )
         screenshot = take_chart_screenshot()
         if screenshot and screenshot.exists():
@@ -856,8 +895,6 @@ def run_nyo_update():
             send_telegram_text("<b>NYO Update Error:</b> " + str(e))
         except Exception:
             pass
-
-
 def run_eod_score():
     print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running EOD score...")
     try:
@@ -996,10 +1033,10 @@ def main():
     schedule.every().saturday.at("14:00").do(run_weekend_recap)
 
     # Uncomment to test immediately
-    # run_news_job()
+    run_news_job()
     run_morning_bias()
-    # run_nyo_update()
-    # run_eod_score()
+    run_nyo_update()
+    run_eod_score()
 
     while True:
         schedule.run_pending()
