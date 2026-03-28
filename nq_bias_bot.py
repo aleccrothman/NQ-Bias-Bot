@@ -27,7 +27,7 @@ TV_USERNAME  = os.getenv("TV_USERNAME", "")
 TV_PASSWORD  = os.getenv("TV_PASSWORD", "")
 TV_CHART_URL = "https://www.tradingview.com/chart/hcbriKzA/"  # Your saved 15m NQ chart
 
-DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1487305689561960589/dr1r2eUvasy8qzdwC9DO9rLGDT6IPWqAPt7yAesqNGQTiSCMejZ3_1Un82XFZLwn30OW"
+DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK", "")
 
 SYMBOL          = "NQ=F"
 IFVG_RANGE_PTS  = 100
