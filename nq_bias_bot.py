@@ -27,6 +27,8 @@ TV_USERNAME  = os.getenv("TV_USERNAME", "")
 TV_PASSWORD  = os.getenv("TV_PASSWORD", "")
 TV_CHART_URL = "https://www.tradingview.com/chart/hcbriKzA/"  # Your saved 15m NQ chart
 
+DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1487305689561960589/dr1r2eUvasy8qzdwC9DO9rLGDT6IPWqAPt7yAesqNGQTiSCMejZ3_1Un82XFZLwn30OW"
+
 SYMBOL          = "NQ=F"
 IFVG_RANGE_PTS  = 100
 IFVG_LOOKBACK_H = 48
@@ -805,6 +807,7 @@ def send_telegram_photo(image_path, caption):
             send_telegram_text(safe_caption)
             return
     print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Photo sent.")
+    send_discord(safe_caption, compressed)
 
 def send_telegram_text(message):
     url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendMessage"
@@ -820,6 +823,43 @@ def send_telegram_text(message):
         except Exception as e:
             print("  -> Text send error: " + str(e))
     print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Text sent.")
+    send_discord(message)
+
+
+def strip_html(text):
+    """Remove HTML tags for Discord which uses markdown instead."""
+    import re
+    text = re.sub(r"<b>(.*?)</b>", r"****", text)
+    text = re.sub(r"<i>(.*?)</i>", r"**", text)
+    text = re.sub(r"<[^>]+>", "", text)
+    return text
+
+
+def send_discord(message, image_path=None):
+    """Send message to Discord webhook."""
+    if not DISCORD_WEBHOOK:
+        return
+    try:
+        # Convert HTML to Discord markdown
+        discord_msg = strip_html(message)
+        # Discord has 2000 char limit
+        if len(discord_msg) > 2000:
+            discord_msg = discord_msg[:1997] + "..."
+
+        if image_path and image_path.exists() and image_path.stat().st_size > 1000:
+            # Send with image
+            with open(image_path, "rb") as img:
+                requests.post(DISCORD_WEBHOOK, data={
+                    "content": discord_msg,
+                }, files={"file": ("chart.jpg", img, "image/jpeg")}, timeout=30)
+        else:
+            # Send text only
+            requests.post(DISCORD_WEBHOOK, json={
+                "content": discord_msg,
+            }, timeout=10)
+        print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Discord sent.")
+    except Exception as e:
+        print("  -> Discord send error: " + str(e))
 
 
 # JOBS
@@ -1074,8 +1114,8 @@ def main():
     schedule.every().saturday.at("14:00").do(run_weekend_recap)
 
     # Uncomment to test immediately
-    # run_news_job()
-    run_morning_bias()
+    run_news_job()
+    # run_morning_bias()
     # run_nyo_update()
     # run_eod_score()
 
