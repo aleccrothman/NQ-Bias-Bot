@@ -467,16 +467,20 @@ def compute_bias(midnight_open, current_price, asia_high, asia_low, london_high,
 
     if london_high > asia_high:
         if london_close is not None and london_close < asia_high:
-            signals["london_break"] = ("+1", "BULL", "London swept Asia High (" + str(round(london_high, 2)) + ") then closed back below - bullish reversal")
-            score += 1
+            # Swept Asia High but closed back inside = bearish trap/reversal = BEARISH signal
+            signals["london_break"] = ("-1", "BEAR", "London swept Asia High (" + str(round(london_high, 2)) + ") then closed back below - bearish trap")
+            score -= 1
         else:
+            # Broke above and held = BULLISH
             signals["london_break"] = ("+1", "BULL", "London broke above Asia High (" + str(round(london_high, 2)) + ")")
             score += 1
     elif london_low < asia_low:
         if london_close is not None and london_close > asia_low:
+            # Swept Asia Low but closed back inside = bullish trap/reversal = BULLISH signal
             signals["london_break"] = ("+1", "BULL", "London swept Asia Low (" + str(round(london_low, 2)) + ") then closed back above - bullish reversal")
             score += 1
         else:
+            # Broke below and held = BEARISH
             signals["london_break"] = ("-1", "BEAR", "London broke below Asia Low (" + str(round(london_low, 2)) + ")")
             score -= 1
     else:
@@ -961,9 +965,9 @@ def run_nyo_update():
         msg = build_nyo_message_with_ifvgs(
             current_price, bias,
             today_state["midnight_open"],
-            today_state["asia_high"], today_state["asia_low"],
+            today_state["asia_high"],   today_state["asia_low"],
             today_state["london_high"], today_state["london_low"],
-            today_state["pdh"], today_state["pdl"],
+            today_state["pdh"],         today_state["pdl"],
             nyo_ifvgs,
         )
         screenshot = take_chart_screenshot()
@@ -1061,7 +1065,10 @@ def run_weekend_recap():
 
         # Get this week's history (last 5 entries)
         week_history = data["history"][-5:] if data["history"] else []
-        week_streak  = "".join(r["result"] for r in week_history)
+        week_wins   = sum(1 for r in week_history if r["result"] == "W")
+        week_losses = sum(1 for r in week_history if r["result"] == "L")
+        week_chops  = sum(1 for r in week_history if r["result"] == "C")
+        week_streak = "".join(r["result"] for r in week_history) if week_history else ""
 
         now_et   = datetime.now(ET)
         date_str = now_et.strftime("%a %b %d")
@@ -1069,22 +1076,27 @@ def run_weekend_recap():
         msg  = "--------------------\n"
         msg += "📅 <b>Weekly Recap | " + date_str + "</b>\n"
         msg += "--------------------\n"
-        msg += "<b>This Week:</b>  " + week_streak + "\n"
-        msg += "W=Win  C=Chop  L=Loss\n\n"
+        msg += "<b>This Week:</b>\n"
+        msg += str(week_wins) + "W  " + str(week_losses) + "L  " + str(week_chops) + "C\n"
+        if week_streak:
+            msg += "Streak: " + week_streak + "\n"
+        else:
+            msg += "No trades recorded this week\n"
+        msg += "\n"
 
         if total >= 10:
             pct = round(wins / total * 100)
-            msg += "<b>Overall Win Rate: " + str(pct) + "%</b>\n"
-            msg += str(wins) + "W / " + str(losses) + "L / " + str(neutrals) + "C\n"
+            msg += "<b>Overall Win Rate: " + str(pct) + "%</b> (" + str(total) + " days)\n"
+            msg += str(wins) + "W  " + str(losses) + "L  " + str(neutrals) + "C\n"
         else:
             remaining = 10 - total
-            msg += "<i>Building sample size (" + str(remaining) + " more days needed)</i>\n"
+            msg += "<i>" + str(remaining) + " more days to unlock win rate %</i>\n"
 
         msg += "--------------------\n"
         msg += "<b>What to Watch Next Week:</b>\n"
-        msg += "• Sunday 6 PM ET - NQ opens, watch for NWOG\n"
-        msg += "• Check Forex Factory for high impact events\n"
-        msg += "• Note this week high/low as liquidity targets\n"
+        msg += "- Sunday 6 PM ET - NQ opens, watch for NWOG\n"
+        msg += "- Check Forex Factory for high impact events\n"
+        msg += "- Note this week high/low as liquidity targets\n"
         msg += "--------------------\n"
         msg += "Have a great weekend! 🏖\n"
         msg += "<i>Not financial advice.</i>"
