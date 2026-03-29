@@ -1143,7 +1143,7 @@ def main():
 
     # Uncomment to test immediately
     # run_news_job()
-    # run_morning_bias()
+    run_morning_bias()
     # run_nyo_update()
     # run_eod_score()
 
