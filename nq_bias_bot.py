@@ -847,7 +847,6 @@ def send_telegram_photo(image_path, caption):
             send_telegram_text(safe_caption)
             return
     print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Photo sent.")
-    send_discord(safe_caption, compressed)
 
 def send_telegram_text(message):
     url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendMessage"
@@ -863,7 +862,6 @@ def send_telegram_text(message):
         except Exception as e:
             print("  -> Text send error: " + str(e))
     print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Text sent.")
-    send_discord(message)
 
 
 def send_teaser(bias_overall, grade, date_str):
@@ -1491,7 +1489,7 @@ def main():
 
     # Monthly report - runs daily but checks if 1st of month
     schedule.every().day.at("12:30").do(run_monthly_report)
-    
+   
     # Uncomment to test immediately
     # run_news_job()
     run_morning_bias()
