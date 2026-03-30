@@ -4,8 +4,7 @@ Schedule (UTC times for Railway):
   11:00 UTC (07:00 ET) - Macro news from Forex Factory
   12:00 UTC (08:00 ET) - Morning bias + chart screenshot
   13:00 UTC (09:00 ET) - NYO update + chart screenshot
-  20:00 UTC (16:00 ET) - EOD score + win rate
-"""
+  20:00 UTC (16:00 ET) - EOD score + win rate\n"""
 
 import os
 import json
@@ -151,39 +150,25 @@ def build_eod_message_v2(bias_direction, result_type, current_price, midnight_op
     else:
         chop_reason = "Price moved against bias direction"
 
-    msg  = "--------------------
-"
-    msg += "📋 <b>EOD Score | " + date_str + "</b>
-"
-    msg += "--------------------
-"
-    msg += bias_icon + " Bias: <b>" + bias_direction.upper() + "</b>  -&gt;  " + result_icon + " <b>" + verdict + "</b>
-"
-    msg += "Close: <b>" + fmt(current_price) + "</b>  (" + diff_str + ")
-"
-    msg += "MO:    <b>" + fmt(midnight_open) + "</b>
-"
+    msg  = "--------------------\n"
+    msg += "📋 <b>EOD Score | " + date_str + "</b>\n"
+    msg += "--------------------\n"
+    msg += bias_icon + " Bias: <b>" + bias_direction.upper() + "</b>  -&gt;  " + result_icon + " <b>" + verdict + "</b>\n"
+    msg += "Close: <b>" + fmt(current_price) + "</b>  (" + diff_str + ")\n"
+    msg += "MO:    <b>" + fmt(midnight_open) + "</b>\n"
     if chop_reason:
-        msg += "<i>" + chop_reason + "</i>
-"
-    msg += "--------------------
-"
-    msg += str(wins) + "W  " + str(losses) + "L  " + str(neutrals) + "C
-"
+        msg += "<i>" + chop_reason + "</i>\n"
+    msg += "--------------------\n"
+    msg += str(wins) + "W  " + str(losses) + "L  " + str(neutrals) + "C\n"
     if total >= 10:
         pct = round(wins / total * 100)
-        msg += "<b>Win Rate: " + str(pct) + "%</b> (" + str(total) + " directional days)
-"
+        msg += "<b>Win Rate: " + str(pct) + "%</b> (" + str(total) + " directional days)\n"
     else:
         remaining = 10 - total
-        msg += "Streak so far: " + streak + "
-"
-        msg += "<i>" + str(remaining) + " more days to unlock win rate %</i>
-"
-    msg += "--------------------
-"
-    msg += "<i>W=Win  C=Chop  L=Loss</i>
-"
+        msg += "Streak so far: " + streak + "\n"
+        msg += "<i>" + str(remaining) + " more days to unlock win rate %</i>\n"
+    msg += "--------------------\n"
+    msg += "<i>W=Win  C=Chop  L=Loss</i>\n"
     msg += "<i>Not financial advice.</i>"
     return msg
 
@@ -193,22 +178,17 @@ def get_winrate_summary():
     losses = data["losses"]
     neutrals = data["neutrals"]
     total = wins + losses
-    msg = "<b>Bias Win Rate</b>
-"
-    msg += str(wins) + "W  " + str(losses) + "L  " + str(neutrals) + "C
-"
+    msg = "<b>Bias Win Rate</b>\n"
+    msg += str(wins) + "W  " + str(losses) + "L  " + str(neutrals) + "C\n"
     if total >= 10:
         pct = round(wins / total * 100)
-        msg += "<b>" + str(pct) + "% accuracy</b> (" + str(total) + " directional days)
-"
+        msg += "<b>" + str(pct) + "% accuracy</b> (" + str(total) + " directional days)\n"
     else:
         remaining = 10 - total
-        msg += "<i>Building sample size (" + str(remaining) + " more days needed)</i>
-"
+        msg += "<i>Building sample size (" + str(remaining) + " more days needed)</i>\n"
     if data["history"] and len(data["history"]) >= 3:
         streak = "".join(r["result"] for r in data["history"][-10:])
-        msg += "Last " + str(len(data["history"][-10:])) + ": " + streak + "
-"
+        msg += "Last " + str(len(data["history"][-10:])) + ": " + streak + "\n"
     return msg
 
 
@@ -316,18 +296,13 @@ def get_forex_factory_news(days=3):
 def build_news_message(all_events):
     today_et = datetime.now(ET).date()
     today_str = today_et.strftime("%a %b %d")
-    msg  = "--------------------
-"
-    msg += "📰 <b>Macro Calendar | " + today_str + "</b>
-"
-    msg += "--------------------
-"
+    msg  = "--------------------\n"
+    msg += "📰 <b>Macro Calendar | " + today_str + "</b>\n"
+    msg += "--------------------\n"
 
     if not all_events:
-        msg += "✅ No high/medium impact USD news today
-"
-        msg += "--------------------
-"
+        msg += "✅ No high/medium impact USD news today\n"
+        msg += "--------------------\n"
         msg += "<i>Not financial advice.</i>"
         return msg
 
@@ -336,11 +311,9 @@ def build_news_message(all_events):
     for date_key, events in all_events.items():
         is_today = date_key == today_str
         if is_today:
-            msg += "🗓 <b>TODAY</b>
-"
+            msg += "🗓 <b>TODAY</b>\n"
         else:
-            msg += "🗓 <b>" + date_key + "</b>
-"
+            msg += "🗓 <b>" + date_key + "</b>\n"
 
         for e in events:
             if e["impact"] == "red":
@@ -350,20 +323,15 @@ def build_news_message(all_events):
             kz = " ⚡<b>KILL ZONE</b>" if e["during_kill_zone"] else ""
             if e["during_kill_zone"]:
                 has_kill_zone = True
-            msg += impact_icon + " <b>" + e["time"] + "</b>  " + e["event"] + kz + "
-"
+            msg += impact_icon + " <b>" + e["time"] + "</b>  " + e["event"] + kz + "\n"
             if is_today and (e["forecast"] != "-" or e["previous"] != "-"):
-                msg += "   📊 F: " + e["forecast"] + "  P: " + e["previous"] + "
-"
+                msg += "   📊 F: " + e["forecast"] + "  P: " + e["previous"] + "\n"
 
-        msg += "
-"
+        msg += "\n"
 
-    msg += "--------------------
-"
+    msg += "--------------------\n"
     if has_kill_zone:
-        msg += "⚠️ <b>News during NY Kill Zone - trade carefully</b>
-"
+        msg += "⚠️ <b>News during NY Kill Zone - trade carefully</b>\n"
     msg += "<i>Not financial advice.</i>"
     return msg
 
@@ -581,56 +549,36 @@ def build_morning_caption(current_price, midnight_open, asia_high, asia_low,
     bias_icon = "🟢" if "BULLISH" in bias["overall"] else "🔴" if "BEARISH" in bias["overall"] else "⚪"
     vote_icons = {"+1": "🟢", "-1": "🔴", " 0": "⚪"}
 
-    msg  = "--------------------
-"
-    msg += "📊 <b>NQ1! Daily Bias | " + date_str + "</b>
-"
+    msg  = "--------------------\n"
+    msg += "📊 <b>NQ1! Daily Bias | " + date_str + "</b>\n"
     if dow_note:
-        msg += "<i>" + dow_note + "</i>
-"
-    msg += "--------------------
-"
-    msg += bias_icon + " <b>" + bias["overall"] + "</b>  |  " + score_str + "  |  Grade: <b>" + grade + "</b>
-"
-    msg += "--------------------
-"
-    msg += "📍 Price:   <b>" + fmt(current_price) + "</b>
-"
-    msg += "🕛 MO:      <b>" + fmt(midnight_open) + "</b>
-"
+        msg += "<i>" + dow_note + "</i>\n"
+    msg += "--------------------\n"
+    msg += bias_icon + " <b>" + bias["overall"] + "</b>  |  " + score_str + "  |  Grade: <b>" + grade + "</b>\n"
+    msg += "--------------------\n"
+    msg += "📍 Price:   <b>" + fmt(current_price) + "</b>\n"
+    msg += "🕛 MO:      <b>" + fmt(midnight_open) + "</b>\n"
     if pdh and pdl:
-        msg += "📅 PDH:     <b>" + fmt(pdh) + "</b>   PDL: <b>" + fmt(pdl) + "</b>
-"
-    msg += "🌏 Asia:    H <b>" + fmt(asia_high) + "</b>  L <b>" + fmt(asia_low) + "</b>
-"
-    msg += "🌍 London:  H <b>" + fmt(london_high) + "</b>  L <b>" + fmt(london_low) + "</b>
-"
-    msg += "--------------------
-"
-    msg += "<b>Signal Breakdown:</b>
-"
+        msg += "📅 PDH:     <b>" + fmt(pdh) + "</b>   PDL: <b>" + fmt(pdl) + "</b>\n"
+    msg += "🌏 Asia:    H <b>" + fmt(asia_high) + "</b>  L <b>" + fmt(asia_low) + "</b>\n"
+    msg += "🌍 London:  H <b>" + fmt(london_high) + "</b>  L <b>" + fmt(london_low) + "</b>\n"
+    msg += "--------------------\n"
+    msg += "<b>Signal Breakdown:</b>\n"
     labels = {"midnight_open": "MO     ", "asia_range": "Asia   ", "london_break": "London "}
     for key, (vote, direction, detail) in bias["signals"].items():
         icon = vote_icons.get(vote.strip(), "⚪")
-        msg += icon + " " + labels[key] + " <i>" + detail + "</i>
-"
-    msg += "--------------------
-"
-    msg += "<b>1H iFVGs +/-" + str(IFVG_RANGE_PTS) + "pts:</b>
-"
+        msg += icon + " " + labels[key] + " <i>" + detail + "</i>\n"
+    msg += "--------------------\n"
+    msg += "<b>1H iFVGs +/-" + str(IFVG_RANGE_PTS) + "pts:</b>\n"
     if not ifvgs:
-        msg += "• None nearby
-"
+        msg += "• None nearby\n"
     else:
         for z in ifvgs:
             zone_icon = "🟩" if z["relation"] == "below" else "🟥"
             side = "Support (up)" if z["relation"] == "below" else "Resistance (down)"
-            msg += zone_icon + " " + fmt(z["bottom"]) + " - " + fmt(z["top"]) + "  " + side + "  (" + str(round(z["dist"])) + "pts)
-"
-            msg += "   " + z["target"] + "
-"
-    msg += "--------------------
-"
+            msg += zone_icon + " " + fmt(z["bottom"]) + " - " + fmt(z["top"]) + "  " + side + "  (" + str(round(z["dist"])) + "pts)\n"
+            msg += "   " + z["target"] + "\n"
+    msg += "--------------------\n"
     msg += "<i>Not financial advice.</i>"
     return msg
 
@@ -658,39 +606,23 @@ def build_nyo_message(current_price, bias, midnight_open,
     bias_icon = "🟢" if "BULLISH" in bias["overall"] else "🔴" if "BEARISH" in bias["overall"] else "⚪"
     status_icon = "✅" if "respected" in status else "⚠️" if "challenged" in status else "⚪"
 
-    msg  = "--------------------
-"
-    msg += "🔔 <b>NYO Update | " + date_str + "</b>
-"
-    msg += "--------------------
-"
-    msg += bias_icon + " <b>" + bias["overall"] + "</b>  |  📍 <b>" + fmt(current_price) + "</b>
-"
-    msg += status_icon + " " + status + "
-"
-    msg += "--------------------
-"
-    msg += "<b>Price vs Key Levels:</b>
-"
-    msg += "🕛 " + dist_label(current_price, mo, "MO") + "
-"
+    msg  = "--------------------\n"
+    msg += "🔔 <b>NYO Update | " + date_str + "</b>\n"
+    msg += "--------------------\n"
+    msg += bias_icon + " <b>" + bias["overall"] + "</b>  |  📍 <b>" + fmt(current_price) + "</b>\n"
+    msg += status_icon + " " + status + "\n"
+    msg += "--------------------\n"
+    msg += "<b>Price vs Key Levels:</b>\n"
+    msg += "🕛 " + dist_label(current_price, mo, "MO") + "\n"
     if pdh and pdl:
-        msg += "📅 " + dist_label(current_price, pdh, "PDH") + "
-"
-        msg += "📅 " + dist_label(current_price, pdl, "PDL") + "
-"
-    msg += "🌏 " + dist_label(current_price, asia_high, "Asia H") + "
-"
-    msg += "🌏 " + dist_label(current_price, asia_low, "Asia L") + "
-"
-    msg += "🌍 " + dist_label(current_price, london_high, "London H") + "
-"
-    msg += "🌍 " + dist_label(current_price, london_low, "London L") + "
-"
-    msg += "--------------------
-"
-    msg += "⏰ <i>NY Kill Zone: 7-10 AM ET</i>
-"
+        msg += "📅 " + dist_label(current_price, pdh, "PDH") + "\n"
+        msg += "📅 " + dist_label(current_price, pdl, "PDL") + "\n"
+    msg += "🌏 " + dist_label(current_price, asia_high, "Asia H") + "\n"
+    msg += "🌏 " + dist_label(current_price, asia_low, "Asia L") + "\n"
+    msg += "🌍 " + dist_label(current_price, london_high, "London H") + "\n"
+    msg += "🌍 " + dist_label(current_price, london_low, "London L") + "\n"
+    msg += "--------------------\n"
+    msg += "⏰ <i>NY Kill Zone: 7-10 AM ET</i>\n"
     msg += "<i>Not financial advice.</i>"
     return msg
 
@@ -705,17 +637,13 @@ def build_nyo_message_with_ifvgs(current_price, bias, midnight_open,
         return base
 
     # Insert iFVG section before the last two lines
-    ifvg_section = "--------------------
-"
-    ifvg_section += "<b>1H iFVGs +/-" + str(IFVG_RANGE_PTS) + "pts:</b>
-"
+    ifvg_section = "--------------------\n"
+    ifvg_section += "<b>1H iFVGs +/-" + str(IFVG_RANGE_PTS) + "pts:</b>\n"
     for z in ifvgs:
         zone_icon = "🟩" if z["relation"] == "below" else "🟥"
         side = "Support (up)" if z["relation"] == "below" else "Resistance (down)"
-        ifvg_section += zone_icon + " " + fmt(z["bottom"]) + " - " + fmt(z["top"]) + "  " + side + "  (" + str(round(z["dist"])) + "pts)
-"
-        ifvg_section += "   " + z["target"] + "
-"
+        ifvg_section += zone_icon + " " + fmt(z["bottom"]) + " - " + fmt(z["top"]) + "  " + side + "  (" + str(round(z["dist"])) + "pts)\n"
+        ifvg_section += "   " + z["target"] + "\n"
 
     # Insert before the last kill zone line
     insert_before = "--------------------\n⏰"
@@ -733,18 +661,12 @@ def build_eod_message(bias_direction, delivered, current_price, midnight_open, w
     pct = round(wins / total * 100) if total > 0 else 0
     streak = "".join(r["result"] for r in winrate_data["history"][-10:])
 
-    msg = "<b>EOD Score - " + date_str + "</b>
-"
-    msg += "Bias: <b>" + bias_direction.upper() + "</b> - " + result + "
-"
-    msg += "Close: <b>" + fmt(current_price) + "</b>  MO: <b>" + fmt(midnight_open) + "</b>
-"
-    msg += "---------------------
-"
-    msg += "<b>Win Rate: " + str(pct) + "%</b> (" + str(wins) + "W / " + str(losses) + "L / " + str(neutrals) + "N)
-"
-    msg += "Last 10: " + streak + "
-"
+    msg = "<b>EOD Score - " + date_str + "</b>\n"
+    msg += "Bias: <b>" + bias_direction.upper() + "</b> - " + result + "\n"
+    msg += "Close: <b>" + fmt(current_price) + "</b>  MO: <b>" + fmt(midnight_open) + "</b>\n"
+    msg += "---------------------\n"
+    msg += "<b>Win Rate: " + str(pct) + "%</b> (" + str(wins) + "W / " + str(losses) + "L / " + str(neutrals) + "N)\n"
+    msg += "Last 10: " + streak + "\n"
     msg += "<i>Not financial advice.</i>"
     return msg
 
@@ -948,18 +870,12 @@ def send_teaser(bias_overall, grade, date_str):
     """Send a short teaser to the free channel to create FOMO."""
     if not TELEGRAM_FREE_CHANNEL:
         return
-    msg  = "📊 <b>NQ1! Daily Bias | " + date_str + "</b>
-"
-    msg += "--------------------
-"
-    msg += "<b>" + bias_overall + "</b> | Grade: <b>" + grade + "</b>
-"
-    msg += "--------------------
-"
-    msg += "Full analysis + chart + iFVG levels in premium channel
-"
-    msg += "Join: @SmokeyNQBot
-"
+    msg  = "📊 <b>NQ1! Daily Bias | " + date_str + "</b>\n"
+    msg += "--------------------\n"
+    msg += "<b>" + bias_overall + "</b> | Grade: <b>" + grade + "</b>\n"
+    msg += "--------------------\n"
+    msg += "Full analysis + chart + iFVG levels in premium channel\n"
+    msg += "Join: @SmokeyNQBot\n"
     msg += "<i>Not financial advice.</i>"
     url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendMessage"
     try:
@@ -985,8 +901,7 @@ def strip_html(text):
     # Remove any remaining HTML tags
     text = re.sub(r"<[^>]+>", "", text)
     # Clean up extra blank lines
-    text = re.sub(r"\n{3,}", "\n
-", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
 
@@ -1176,54 +1091,30 @@ def run_eod_score():
 
 def send_welcome_message(chat_id):
     """Send welcome message to new group members."""
-    msg  = "--------------------
-"
-    msg += "👋 <b>Welcome to Smokey Bias!</b>
-"
-    msg += "--------------------
-"
-    msg += "Here is what you will receive every trading day:\n
-"
-    msg += "🕖 <b>7:00 AM ET - Macro Calendar</b>
-"
-    msg += "High and medium impact USD news for today and the next 2 days. Kill zone events are flagged.\n
-"
-    msg += "📊 <b>8:00 AM ET - Daily Bias</b>
-"
-    msg += "NQ1! bias based on Midnight Open, Asia H/L, London H/L, and 1H iFVGs. Includes a chart screenshot and confidence grade (A+/A/B/C/D).\n
-"
-    msg += "🔔 <b>9:00 AM ET - NYO Update</b>
-"
-    msg += "Is price respecting the bias? Live price vs all key levels heading into the NY Kill Zone.\n
-"
-    msg += "📋 <b>4:00 PM ET - EOD Score</b>
-"
-    msg += "Did the bias deliver? Win rate tracker updated daily.\n
-"
-    msg += "--------------------
-"
-    msg += "<b>Grade System:</b>
-"
-    msg += "A+ = All 3 signals + iFVG in zone (best setup)
-"
-    msg += "A  = All 3 signals agree
-"
-    msg += "B  = 2/3 signals agree
-"
-    msg += "C  = 1/3 signals
-"
-    msg += "D  = Mixed/Neutral\n
-"
-    msg += "<b>EOD Scoring:</b>
-"
-    msg += "W = Price moved 100+ pts in bias direction
-"
-    msg += "C = Choppy - price closed within 75pts of MO
-"
-    msg += "L = Price moved 100+ pts against bias
-"
-    msg += "--------------------
-"
+    msg  = "--------------------\n"
+    msg += "👋 <b>Welcome to Smokey Bias!</b>\n"
+    msg += "--------------------\n"
+    msg += "Here is what you will receive every trading day:\n\n"
+    msg += "🕖 <b>7:00 AM ET - Macro Calendar</b>\n"
+    msg += "High and medium impact USD news for today and the next 2 days. Kill zone events are flagged.\n\n"
+    msg += "📊 <b>8:00 AM ET - Daily Bias</b>\n"
+    msg += "NQ1! bias based on Midnight Open, Asia H/L, London H/L, and 1H iFVGs. Includes a chart screenshot and confidence grade (A+/A/B/C/D).\n\n"
+    msg += "🔔 <b>9:00 AM ET - NYO Update</b>\n"
+    msg += "Is price respecting the bias? Live price vs all key levels heading into the NY Kill Zone.\n\n"
+    msg += "📋 <b>4:00 PM ET - EOD Score</b>\n"
+    msg += "Did the bias deliver? Win rate tracker updated daily.\n\n"
+    msg += "--------------------\n"
+    msg += "<b>Grade System:</b>\n"
+    msg += "A+ = All 3 signals + iFVG in zone (best setup)\n"
+    msg += "A  = All 3 signals agree\n"
+    msg += "B  = 2/3 signals agree\n"
+    msg += "C  = 1/3 signals\n"
+    msg += "D  = Mixed/Neutral\n\n"
+    msg += "<b>EOD Scoring:</b>\n"
+    msg += "W = Price moved 100+ pts in bias direction\n"
+    msg += "C = Choppy - price closed within 75pts of MO\n"
+    msg += "L = Price moved 100+ pts against bias\n"
+    msg += "--------------------\n"
     msg += "<i>Not financial advice. Always trade your own plan.</i>"
 
     url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendMessage"
@@ -1254,50 +1145,32 @@ def run_weekend_recap():
         now_et   = datetime.now(ET)
         date_str = now_et.strftime("%a %b %d")
 
-        msg  = "--------------------
-"
-        msg += "📅 <b>Weekly Recap | " + date_str + "</b>
-"
-        msg += "--------------------
-"
-        msg += "<b>This Week:</b>
-"
-        msg += str(week_wins) + "W  " + str(week_losses) + "L  " + str(week_chops) + "C
-"
+        msg  = "--------------------\n"
+        msg += "📅 <b>Weekly Recap | " + date_str + "</b>\n"
+        msg += "--------------------\n"
+        msg += "<b>This Week:</b>\n"
+        msg += str(week_wins) + "W  " + str(week_losses) + "L  " + str(week_chops) + "C\n"
         if week_streak:
-            msg += "Streak: " + week_streak + "
-"
+            msg += "Streak: " + week_streak + "\n"
         else:
-            msg += "No trades recorded this week
-"
-        msg += "
-"
+            msg += "No trades recorded this week\n"
+        msg += "\n"
 
         if total >= 10:
             pct = round(wins / total * 100)
-            msg += "<b>Overall Win Rate: " + str(pct) + "%</b> (" + str(total) + " days)
-"
-            msg += str(wins) + "W  " + str(losses) + "L  " + str(neutrals) + "C
-"
+            msg += "<b>Overall Win Rate: " + str(pct) + "%</b> (" + str(total) + " days)\n"
+            msg += str(wins) + "W  " + str(losses) + "L  " + str(neutrals) + "C\n"
         else:
             remaining = 10 - total
-            msg += "<i>" + str(remaining) + " more days to unlock win rate %</i>
-"
+            msg += "<i>" + str(remaining) + " more days to unlock win rate %</i>\n"
 
-        msg += "--------------------
-"
-        msg += "<b>What to Watch Next Week:</b>
-"
-        msg += "- Sunday 6 PM ET - NQ opens, watch for NWOG
-"
-        msg += "- Check Forex Factory for high impact events
-"
-        msg += "- Note this week high/low as liquidity targets
-"
-        msg += "--------------------
-"
-        msg += "Have a great weekend! 🏖
-"
+        msg += "--------------------\n"
+        msg += "<b>What to Watch Next Week:</b>\n"
+        msg += "- Sunday 6 PM ET - NQ opens, watch for NWOG\n"
+        msg += "- Check Forex Factory for high impact events\n"
+        msg += "- Note this week high/low as liquidity targets\n"
+        msg += "--------------------\n"
+        msg += "Have a great weekend! 🏖\n"
         msg += "<i>Not financial advice.</i>"
 
         send_telegram_text(msg)
@@ -1326,36 +1199,23 @@ def build_weekly_performance_post():
 
     date_str = datetime.now(ET).strftime("%b %d, %Y")
 
-    msg  = "📊 <b>Smokey Bias - Weekly Performance</b>
-"
-    msg += "Week ending " + date_str + "
-"
-    msg += "--------------------
-"
-    msg += "<b>This Week:</b>  " + str(week_wins) + "W  " + str(week_losses) + "L  " + str(week_chops) + "C
-"
+    msg  = "📊 <b>Smokey Bias - Weekly Performance</b>\n"
+    msg += "Week ending " + date_str + "\n"
+    msg += "--------------------\n"
+    msg += "<b>This Week:</b>  " + str(week_wins) + "W  " + str(week_losses) + "L  " + str(week_chops) + "C\n"
     if week_streak:
-        msg += "Streak: " + week_streak + "
-"
-    msg += "
-"
+        msg += "Streak: " + week_streak + "\n"
+    msg += "\n"
     if total >= 10:
         pct = round(wins / total * 100)
-        msg += "<b>Overall Accuracy: " + str(pct) + "%</b> (" + str(total) + " trading days)
-"
+        msg += "<b>Overall Accuracy: " + str(pct) + "%</b> (" + str(total) + " trading days)\n"
     else:
-        msg += "<i>Building track record...</i>
-"
-    msg += "--------------------
-"
-    msg += "Daily bias alerts for NQ1! futures
-"
-    msg += "Midnight Open + Asia/London sessions + 1H iFVGs
-"
-    msg += "--------------------
-"
-    msg += "Join free: @SmokeyNQBot
-"
+        msg += "<i>Building track record...</i>\n"
+    msg += "--------------------\n"
+    msg += "Daily bias alerts for NQ1! futures\n"
+    msg += "Midnight Open + Asia/London sessions + 1H iFVGs\n"
+    msg += "--------------------\n"
+    msg += "Join free: @SmokeyNQBot\n"
     msg += "<i>Not financial advice.</i>"
     return msg
 
@@ -1406,32 +1266,20 @@ def run_monthly_report():
         bear_pct = round(bear_wins / bear_total * 100) if bear_total > 0 else 0
 
         prev_month = (now_et.replace(day=1) - timedelta(days=1)).strftime("%B %Y")
-        msg  = "📋 <b>Monthly Report | " + prev_month + "</b>
-"
-        msg += "--------------------
-"
-        msg += "<b>Results:</b>
-"
-        msg += str(month_wins) + "W  " + str(month_losses) + "L  " + str(month_chops) + "C
-"
-        msg += "<b>Accuracy: " + str(month_pct) + "%</b> (" + str(month_total) + " directional days)
-"
-        msg += "Streak: " + month_streak + "\n
-"
-        msg += "<b>By Direction:</b>
-"
-        msg += "Bullish bias: " + str(bull_pct) + "% (" + str(bull_wins) + "/" + str(bull_total) + ")
-"
-        msg += "Bearish bias: " + str(bear_pct) + "% (" + str(bear_wins) + "/" + str(bear_total) + ")
-"
-        msg += "--------------------
-"
+        msg  = "📋 <b>Monthly Report | " + prev_month + "</b>\n"
+        msg += "--------------------\n"
+        msg += "<b>Results:</b>\n"
+        msg += str(month_wins) + "W  " + str(month_losses) + "L  " + str(month_chops) + "C\n"
+        msg += "<b>Accuracy: " + str(month_pct) + "%</b> (" + str(month_total) + " directional days)\n"
+        msg += "Streak: " + month_streak + "\n\n"
+        msg += "<b>By Direction:</b>\n"
+        msg += "Bullish bias: " + str(bull_pct) + "% (" + str(bull_wins) + "/" + str(bull_total) + ")\n"
+        msg += "Bearish bias: " + str(bear_pct) + "% (" + str(bear_wins) + "/" + str(bear_total) + ")\n"
+        msg += "--------------------\n"
         if total >= 10:
             overall_pct = round(wins / total * 100)
-            msg += "<b>All-Time Win Rate: " + str(overall_pct) + "%</b> (" + str(total) + " days)
-"
-        msg += "--------------------
-"
+            msg += "<b>All-Time Win Rate: " + str(overall_pct) + "%</b> (" + str(total) + " days)\n"
+        msg += "--------------------\n"
         msg += "<i>Not financial advice.</i>"
 
         send_telegram_text(msg)
@@ -1452,37 +1300,26 @@ def run_trade_of_week():
         wins_this_week = [r for r in week_history if r["result"] == "W"]
 
         date_str = datetime.now(ET).strftime("%b %d")
-        msg  = "🏆 <b>Bias of the Week | " + date_str + "</b>
-"
-        msg += "--------------------
-"
+        msg  = "🏆 <b>Bias of the Week | " + date_str + "</b>\n"
+        msg += "--------------------\n"
 
         if not wins_this_week:
-            msg += "No winning biases this week
-"
-            msg += "Chop week - market was indecisive
-"
+            msg += "No winning biases this week\n"
+            msg += "Chop week - market was indecisive\n"
         else:
             # Show the wins
-            msg += str(len(wins_this_week)) + " bias" + ("es" if len(wins_this_week) > 1 else "") + " delivered this week\n
-"
+            msg += str(len(wins_this_week)) + " bias" + ("es" if len(wins_this_week) > 1 else "") + " delivered this week\n\n"
             for r in wins_this_week:
-                msg += "✅ " + r.get("date", "") + " - " + r.get("bias", "").upper() + " delivered
-"
+                msg += "✅ " + r.get("date", "") + " - " + r.get("bias", "").upper() + " delivered\n"
 
-        msg += "--------------------
-"
+        msg += "--------------------\n"
         week_wins   = len(wins_this_week)
         week_losses = sum(1 for r in week_history if r["result"] == "L")
         week_chops  = sum(1 for r in week_history if r["result"] == "C")
-        msg += "Week: " + str(week_wins) + "W  " + str(week_losses) + "L  " + str(week_chops) + "C
-"
-        msg += "--------------------
-"
-        msg += "Follow for daily NQ bias alerts
-"
-        msg += "Join: @SmokeyNQBot
-"
+        msg += "Week: " + str(week_wins) + "W  " + str(week_losses) + "L  " + str(week_chops) + "C\n"
+        msg += "--------------------\n"
+        msg += "Follow for daily NQ bias alerts\n"
+        msg += "Join: @SmokeyNQBot\n"
         msg += "<i>Not financial advice.</i>"
 
         send_telegram_text(msg)
@@ -1517,6 +1354,7 @@ def main():
 
     # Monthly report - runs daily but checks if 1st of month
     schedule.every().day.at("12:30").do(run_monthly_report)
+   
     # Uncomment to test immediately
     # run_news_job()
     run_morning_bias()
