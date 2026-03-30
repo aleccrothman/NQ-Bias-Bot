@@ -34,6 +34,15 @@ SYMBOL          = "NQ=F"
 IFVG_RANGE_PTS  = 100
 IFVG_LOOKBACK_H = 48
 
+def fmt(val, decimals=2):
+    """Safely format a number, returning N/A if None."""
+    if val is None:
+        return "N/A"
+    try:
+        return str(round(float(val), decimals))
+    except Exception:
+        return "N/A"
+
 ET  = pytz.timezone("America/New_York")
 UTC = pytz.utc
 
@@ -146,8 +155,8 @@ def build_eod_message_v2(bias_direction, result_type, current_price, midnight_op
     msg += "📋 <b>EOD Score | " + date_str + "</b>\n"
     msg += "--------------------\n"
     msg += bias_icon + " Bias: <b>" + bias_direction.upper() + "</b>  -&gt;  " + result_icon + " <b>" + verdict + "</b>\n"
-    msg += "Close: <b>" + str(round(current_price, 2)) + "</b>  (" + diff_str + ")\n"
-    msg += "MO:    <b>" + str(round(midnight_open, 2)) + "</b>\n"
+    msg += "Close: <b>" + fmt(current_price) + "</b>  (" + diff_str + ")\n"
+    msg += "MO:    <b>" + fmt(midnight_open) + "</b>\n"
     if chop_reason:
         msg += "<i>" + chop_reason + "</i>\n"
     msg += "--------------------\n"
@@ -449,19 +458,19 @@ def compute_bias(midnight_open, current_price, asia_high, asia_low, london_high,
     signals, score = {}, 0
 
     if current_price > midnight_open:
-        signals["midnight_open"] = ("+1", "BULL", "Price " + str(round(current_price, 2)) + " &gt; MO " + str(round(midnight_open, 2)))
+        signals["midnight_open"] = ("+1", "BULL", "Price " + fmt(current_price) + " &gt; MO " + fmt(midnight_open))
         score += 1
     elif current_price < midnight_open:
-        signals["midnight_open"] = ("-1", "BEAR", "Price " + str(round(current_price, 2)) + " &lt; MO " + str(round(midnight_open, 2)))
+        signals["midnight_open"] = ("-1", "BEAR", "Price " + fmt(current_price) + " &lt; MO " + fmt(midnight_open))
         score -= 1
     else:
-        signals["midnight_open"] = (" 0", "NEUT", "Price at MO " + str(round(midnight_open, 2)))
+        signals["midnight_open"] = (" 0", "NEUT", "Price at MO " + fmt(midnight_open))
 
     if current_price > asia_high:
-        signals["asia_range"] = ("+1", "BULL", "Above Asia High " + str(round(asia_high, 2)))
+        signals["asia_range"] = ("+1", "BULL", "Above Asia High " + fmt(asia_high))
         score += 1
     elif current_price < asia_low:
-        signals["asia_range"] = ("-1", "BEAR", "Below Asia Low " + str(round(asia_low, 2)))
+        signals["asia_range"] = ("-1", "BEAR", "Below Asia Low " + fmt(asia_low))
         score -= 1
     else:
         signals["asia_range"] = (" 0", "NEUT", "Inside Asia Range")
@@ -469,20 +478,20 @@ def compute_bias(midnight_open, current_price, asia_high, asia_low, london_high,
     if london_high > asia_high:
         if london_close is not None and london_close < asia_high:
             # Swept Asia High but closed back inside = bearish trap/reversal = BEARISH signal
-            signals["london_break"] = ("-1", "BEAR", "London swept Asia High (" + str(round(london_high, 2)) + ") then closed back below - bearish trap")
+            signals["london_break"] = ("-1", "BEAR", "London swept Asia High (" + fmt(london_high) + ") then closed back below - bearish trap")
             score -= 1
         else:
             # Broke above and held = BULLISH
-            signals["london_break"] = ("+1", "BULL", "London broke above Asia High (" + str(round(london_high, 2)) + ")")
+            signals["london_break"] = ("+1", "BULL", "London broke above Asia High (" + fmt(london_high) + ")")
             score += 1
     elif london_low < asia_low:
         if london_close is not None and london_close > asia_low:
             # Swept Asia Low but closed back inside = bullish trap/reversal = BULLISH signal
-            signals["london_break"] = ("+1", "BULL", "London swept Asia Low (" + str(round(london_low, 2)) + ") then closed back above - bullish reversal")
+            signals["london_break"] = ("+1", "BULL", "London swept Asia Low (" + fmt(london_low) + ") then closed back above - bullish reversal")
             score += 1
         else:
             # Broke below and held = BEARISH
-            signals["london_break"] = ("-1", "BEAR", "London broke below Asia Low (" + str(round(london_low, 2)) + ")")
+            signals["london_break"] = ("-1", "BEAR", "London broke below Asia Low (" + fmt(london_low) + ")")
             score -= 1
     else:
         signals["london_break"] = (" 0", "NEUT", "London inside Asia range")
@@ -548,12 +557,12 @@ def build_morning_caption(current_price, midnight_open, asia_high, asia_low,
     msg += "--------------------\n"
     msg += bias_icon + " <b>" + bias["overall"] + "</b>  |  " + score_str + "  |  Grade: <b>" + grade + "</b>\n"
     msg += "--------------------\n"
-    msg += "📍 Price:   <b>" + str(round(current_price, 2)) + "</b>\n"
-    msg += "🕛 MO:      <b>" + str(round(midnight_open, 2)) + "</b>\n"
+    msg += "📍 Price:   <b>" + fmt(current_price) + "</b>\n"
+    msg += "🕛 MO:      <b>" + fmt(midnight_open) + "</b>\n"
     if pdh and pdl:
-        msg += "📅 PDH:     <b>" + str(round(pdh, 2)) + "</b>   PDL: <b>" + str(round(pdl, 2)) + "</b>\n"
-    msg += "🌏 Asia:    H <b>" + str(round(asia_high, 2)) + "</b>  L <b>" + str(round(asia_low, 2)) + "</b>\n"
-    msg += "🌍 London:  H <b>" + str(round(london_high, 2)) + "</b>  L <b>" + str(round(london_low, 2)) + "</b>\n"
+        msg += "📅 PDH:     <b>" + fmt(pdh) + "</b>   PDL: <b>" + fmt(pdl) + "</b>\n"
+    msg += "🌏 Asia:    H <b>" + fmt(asia_high) + "</b>  L <b>" + fmt(asia_low) + "</b>\n"
+    msg += "🌍 London:  H <b>" + fmt(london_high) + "</b>  L <b>" + fmt(london_low) + "</b>\n"
     msg += "--------------------\n"
     msg += "<b>Signal Breakdown:</b>\n"
     labels = {"midnight_open": "MO     ", "asia_range": "Asia   ", "london_break": "London "}
@@ -568,7 +577,7 @@ def build_morning_caption(current_price, midnight_open, asia_high, asia_low,
         for z in ifvgs:
             zone_icon = "🟩" if z["relation"] == "below" else "🟥"
             side = "Support (up)" if z["relation"] == "below" else "Resistance (down)"
-            msg += zone_icon + " " + str(round(z["bottom"], 2)) + " - " + str(round(z["top"], 2)) + "  " + side + "  (" + str(round(z["dist"])) + "pts)\n"
+            msg += zone_icon + " " + fmt(z["bottom"]) + " - " + fmt(z["top"]) + "  " + side + "  (" + str(round(z["dist"])) + "pts)\n"
             msg += "   " + z["target"] + "\n"
     msg += "--------------------\n"
     msg += "<i>Not financial advice.</i>"
@@ -593,7 +602,7 @@ def build_nyo_message(current_price, bias, midnight_open,
     def dist_label(price, level, name):
         diff = price - level
         arrow = "above" if diff > 0 else "below"
-        return name + ": " + str(round(level, 2)) + " (" + str(round(abs(diff))) + "pts " + arrow + ")"
+        return name + ": " + fmt(level) + " (" + str(round(abs(diff))) + "pts " + arrow + ")"
 
     bias_icon = "🟢" if "BULLISH" in bias["overall"] else "🔴" if "BEARISH" in bias["overall"] else "⚪"
     status_icon = "✅" if "respected" in status else "⚠️" if "challenged" in status else "⚪"
@@ -601,7 +610,7 @@ def build_nyo_message(current_price, bias, midnight_open,
     msg  = "--------------------\n"
     msg += "🔔 <b>NYO Update | " + date_str + "</b>\n"
     msg += "--------------------\n"
-    msg += bias_icon + " <b>" + bias["overall"] + "</b>  |  📍 <b>" + str(round(current_price, 2)) + "</b>\n"
+    msg += bias_icon + " <b>" + bias["overall"] + "</b>  |  📍 <b>" + fmt(current_price) + "</b>\n"
     msg += status_icon + " " + status + "\n"
     msg += "--------------------\n"
     msg += "<b>Price vs Key Levels:</b>\n"
@@ -634,7 +643,7 @@ def build_nyo_message_with_ifvgs(current_price, bias, midnight_open,
     for z in ifvgs:
         zone_icon = "🟩" if z["relation"] == "below" else "🟥"
         side = "Support (up)" if z["relation"] == "below" else "Resistance (down)"
-        ifvg_section += zone_icon + " " + str(round(z["bottom"], 2)) + " - " + str(round(z["top"], 2)) + "  " + side + "  (" + str(round(z["dist"])) + "pts)\n"
+        ifvg_section += zone_icon + " " + fmt(z["bottom"]) + " - " + fmt(z["top"]) + "  " + side + "  (" + str(round(z["dist"])) + "pts)\n"
         ifvg_section += "   " + z["target"] + "\n"
 
     # Insert before the last kill zone line
@@ -655,7 +664,7 @@ def build_eod_message(bias_direction, delivered, current_price, midnight_open, w
 
     msg = "<b>EOD Score - " + date_str + "</b>\n"
     msg += "Bias: <b>" + bias_direction.upper() + "</b> - " + result + "\n"
-    msg += "Close: <b>" + str(round(current_price, 2)) + "</b>  MO: <b>" + str(round(midnight_open, 2)) + "</b>\n"
+    msg += "Close: <b>" + fmt(current_price) + "</b>  MO: <b>" + fmt(midnight_open) + "</b>\n"
     msg += "---------------------\n"
     msg += "<b>Win Rate: " + str(pct) + "%</b> (" + str(wins) + "W / " + str(losses) + "L / " + str(neutrals) + "N)\n"
     msg += "Last 10: " + streak + "\n"
