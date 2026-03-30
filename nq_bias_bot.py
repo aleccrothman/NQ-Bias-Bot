@@ -816,9 +816,8 @@ def send_telegram_photo(image_path, caption):
         send_telegram_text(caption)
         return
 
-    # Clean caption of any problematic characters
-    safe_caption = caption.replace("\\", "").replace('\"', '"')
     # Telegram caption max is 1024 chars
+    safe_caption = caption
     if len(safe_caption) > 1024:
         safe_caption = safe_caption[:1020] + "..."
 
