@@ -905,28 +905,143 @@ def strip_html(text):
     return text.strip()
 
 
-def send_discord(message, image_path=None):
-    """Send message to Discord webhook."""
+def send_discord_raw(content, image_path=None):
+    """Send a raw message to Discord webhook."""
     if not DISCORD_WEBHOOK:
         return
     try:
-        # Convert HTML to Discord markdown
+        if len(content) > 2000:
+            content = content[:1997] + "..."
+        if image_path and Path(image_path).exists() and Path(image_path).stat().st_size > 1000:
+            with open(image_path, "rb") as img:
+                requests.post(DISCORD_WEBHOOK, data={"content": content},
+                    files={"file": ("chart.jpg", img, "image/jpeg")}, timeout=30)
+        else:
+            requests.post(DISCORD_WEBHOOK, json={"content": content}, timeout=10)
+        print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Discord sent.")
+    except Exception as e:
+        print("  -> Discord send error: " + str(e))
+
+
+def build_discord_morning(current_price, midnight_open, asia_high, asia_low,
+                          london_high, london_low, pdh, pdl, bias, ifvgs):
+    """Build a clean Discord-native morning bias message using Discord markdown."""
+    date_str  = datetime.now(ET).strftime("%a %b %d")
+    score_str = ("+" if bias["score"] > 0 else "") + str(bias["score"]) + "/3"
+    grade     = bias.get("grade", "C")
+    if grade == "A" and ifvgs:
+        grade = "A+"
+
+    dow = datetime.now(ET).strftime("%A")
+    dow_notes = {
+        "Monday": "Mon - Watch for manipulation",
+        "Tuesday": "Tue - Typical delivery day",
+        "Wednesday": "Wed - Typical delivery day",
+        "Thursday": "Thu - Typical delivery day",
+        "Friday": "Fri - Watch for reversals",
+    }
+    dow_note  = dow_notes.get(dow, "")
+    bias_icon = "🟢" if "BULLISH" in bias["overall"] else "🔴" if "BEARISH" in bias["overall"] else "⚪"
+    vote_icons = {"+1": "🟢", "-1": "🔴", " 0": "⚪"}
+
+    msg  = "--------------------\n"
+    msg += "📊 **NQ1! Daily Bias | " + date_str + "**\n"
+    if dow_note:
+        msg += "*" + dow_note + "*\n"
+    msg += "--------------------\n"
+    msg += bias_icon + " **" + bias["overall"] + "**  |  " + score_str + "  |  Grade: **" + grade + "**\n"
+    msg += "--------------------\n"
+    msg += "📍 Price:   **" + fmt(current_price) + "**\n"
+    msg += "🕛 MO:      **" + fmt(midnight_open) + "**\n"
+    if pdh and pdl:
+        msg += "📅 PDH:     **" + fmt(pdh) + "**   PDL: **" + fmt(pdl) + "**\n"
+    msg += "🌏 Asia:    H **" + fmt(asia_high) + "**  L **" + fmt(asia_low) + "**\n"
+    msg += "🌍 London:  H **" + fmt(london_high) + "**  L **" + fmt(london_low) + "**\n"
+    msg += "--------------------\n"
+    msg += "**Signal Breakdown:**\n"
+    labels = {"midnight_open": "MO     ", "asia_range": "Asia   ", "london_break": "London "}
+    for key, (vote, direction, detail) in bias["signals"].items():
+        icon = vote_icons.get(vote.strip(), "⚪")
+        msg += icon + " " + labels[key] + " *" + detail + "*\n"
+    msg += "--------------------\n"
+    msg += "**1H iFVGs +/-" + str(IFVG_RANGE_PTS) + "pts:**\n"
+    if not ifvgs:
+        msg += "- None nearby\n"
+    else:
+        for z in ifvgs:
+            zone_icon = "🟩" if z["relation"] == "below" else "🟥"
+            side = "Support (up)" if z["relation"] == "below" else "Resistance (down)"
+            msg += zone_icon + " " + fmt(z["bottom"]) + " - " + fmt(z["top"]) + "  " + side + "  (" + str(round(z["dist"])) + "pts)\n"
+            msg += "   " + z["target"] + "\n"
+    msg += "--------------------\n"
+    msg += "*Not financial advice.*"
+    return msg
+
+
+def build_discord_nyo(current_price, bias, midnight_open,
+                      asia_high, asia_low, london_high, london_low, pdh, pdl, ifvgs):
+    """Build Discord-native NYO update message."""
+    date_str   = datetime.now(ET).strftime("%a %b %d")
+    bias_icon  = "🟢" if "BULLISH" in bias["overall"] else "🔴" if "BEARISH" in bias["overall"] else "⚪"
+    direction  = bias["direction"]
+    mo         = midnight_open
+
+    if direction == "bullish":
+        respecting = current_price > mo
+        status     = "✅ Bias respected - price holding above MO" if respecting else "⚠️ Bias challenged - price below MO"
+    elif direction == "bearish":
+        respecting = current_price < mo
+        status     = "✅ Bias respected - price holding below MO" if respecting else "⚠️ Bias challenged - price above MO"
+    else:
+        status = "⚪ Neutral bias - no directional expectation"
+
+    def dist_label(price, level, name):
+        diff  = price - level
+        arrow = "above" if diff > 0 else "below"
+        return name + ": " + fmt(level) + " (" + str(round(abs(diff))) + "pts " + arrow + ")"
+
+    msg  = "--------------------\n"
+    msg += "🔔 **NYO Update | " + date_str + "**\n"
+    msg += "--------------------\n"
+    msg += bias_icon + " **" + bias["overall"] + "**  |  📍 **" + fmt(current_price) + "**\n"
+    msg += status + "\n"
+    msg += "--------------------\n"
+    msg += "**Price vs Key Levels:**\n"
+    msg += "🕛 " + dist_label(current_price, mo, "MO") + "\n"
+    if pdh and pdl:
+        msg += "📅 " + dist_label(current_price, pdh, "PDH") + "\n"
+        msg += "📅 " + dist_label(current_price, pdl, "PDL") + "\n"
+    msg += "🌏 " + dist_label(current_price, asia_high, "Asia H") + "\n"
+    msg += "🌏 " + dist_label(current_price, asia_low,  "Asia L") + "\n"
+    msg += "🌍 " + dist_label(current_price, london_high, "London H") + "\n"
+    msg += "🌍 " + dist_label(current_price, london_low,  "London L") + "\n"
+    if ifvgs:
+        msg += "--------------------\n"
+        msg += "**1H iFVGs +/-" + str(IFVG_RANGE_PTS) + "pts:**\n"
+        for z in ifvgs:
+            zone_icon = "🟩" if z["relation"] == "below" else "🟥"
+            side = "Support (up)" if z["relation"] == "below" else "Resistance (down)"
+            msg += zone_icon + " " + fmt(z["bottom"]) + " - " + fmt(z["top"]) + "  " + side + "  (" + str(round(z["dist"])) + "pts)\n"
+    msg += "--------------------\n"
+    msg += "⏰ *NY Kill Zone: 7-10 AM ET*\n"
+    msg += "*Not financial advice.*"
+    return msg
+
+
+def send_discord(message, image_path=None):
+    """Legacy - converts HTML and sends. Used for text-only messages."""
+    if not DISCORD_WEBHOOK:
+        return
+    try:
         discord_msg = strip_html(message)
-        # Discord has 2000 char limit
         if len(discord_msg) > 2000:
             discord_msg = discord_msg[:1997] + "..."
-
-        if image_path and image_path.exists() and image_path.stat().st_size > 1000:
-            # Send with image
+        if image_path and Path(image_path).exists() and Path(image_path).stat().st_size > 1000:
             with open(image_path, "rb") as img:
-                requests.post(DISCORD_WEBHOOK, data={
-                    "content": discord_msg,
-                }, files={"file": ("chart.jpg", img, "image/jpeg")}, timeout=30)
+                requests.post(DISCORD_WEBHOOK, data={"content": discord_msg},
+                    files={"file": ("chart.jpg", img, "image/jpeg")}, timeout=30)
         else:
-            # Send text only
-            requests.post(DISCORD_WEBHOOK, json={
-                "content": discord_msg,
-            }, timeout=10)
+            requests.post(DISCORD_WEBHOOK, json={"content": discord_msg}, timeout=10)
         print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Discord sent.")
     except Exception as e:
         print("  -> Discord send error: " + str(e))
@@ -1014,6 +1129,14 @@ def run_morning_bias():
             caption += "\nChart screenshot unavailable."
             send_telegram_text(caption)
 
+        # Send Discord-native message
+        discord_msg = build_discord_morning(current_price, midnight_open, asia_high, asia_low,
+                                            london_high, london_low, pdh, pdl, bias, ifvgs)
+        if screenshot and screenshot.exists():
+            send_discord_raw(discord_msg, screenshot)
+        else:
+            send_discord_raw(discord_msg)
+
     except Exception as e:
         try:
             send_telegram_text("<b>Morning Bias Error:</b> " + str(e))
@@ -1047,6 +1170,20 @@ def run_nyo_update():
             send_telegram_photo(screenshot, msg)
         else:
             send_telegram_text(msg)
+
+        # Send Discord-native NYO message
+        discord_nyo = build_discord_nyo(
+            current_price, bias,
+            today_state["midnight_open"],
+            today_state["asia_high"],   today_state["asia_low"],
+            today_state["london_high"], today_state["london_low"],
+            today_state["pdh"],         today_state["pdl"],
+            nyo_ifvgs,
+        )
+        if screenshot and screenshot.exists():
+            send_discord_raw(discord_nyo, screenshot)
+        else:
+            send_discord_raw(discord_nyo)
     except Exception as e:
         try:
             send_telegram_text("<b>NYO Update Error:</b> " + str(e))
@@ -1354,7 +1491,7 @@ def main():
 
     # Monthly report - runs daily but checks if 1st of month
     schedule.every().day.at("12:30").do(run_monthly_report)
-   
+    
     # Uncomment to test immediately
     # run_news_job()
     run_morning_bias()
