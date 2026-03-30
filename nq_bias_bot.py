@@ -22,6 +22,7 @@ import pytz
 TELEGRAM_BOT_TOKEN  = "8757455017:AAFuZgFN5ml3xNCVVE3ww8DyzWThtQrTMos"
 TELEGRAM_CHAT_ID    = "5048230949"
 TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "-1003726448503")
+TELEGRAM_FREE_CHANNEL = os.getenv("TELEGRAM_FREE_CHANNEL", "")  # Optional free/public channel for teasers
 
 TV_USERNAME  = os.getenv("TV_USERNAME", "")
 TV_PASSWORD  = os.getenv("TV_PASSWORD", "")
@@ -743,14 +744,42 @@ def take_chart_screenshot():
 
 def compress_screenshot(image_path):
     try:
-        from PIL import Image
+        from PIL import Image, ImageDraw, ImageFont
         compressed_path = Path("/tmp/nq_chart_compressed.jpg")
-        img = Image.open(image_path)
+        img = Image.open(image_path).convert("RGB")
         max_width = 1280
         if img.width > max_width:
             ratio = max_width / img.width
             img = img.resize((max_width, int(img.height * ratio)), Image.LANCZOS)
-        img.convert("RGB").save(compressed_path, "JPEG", quality=85, optimize=True)
+
+        # Add watermark
+        try:
+            draw = ImageDraw.Draw(img)
+            watermark = "Smokey Bias | t.me/SmokeyNQBot"
+            # Use default font
+            font_size = max(16, img.width // 50)
+            try:
+                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
+            except Exception:
+                font = ImageFont.load_default()
+
+            # Get text size
+            bbox = draw.textbbox((0, 0), watermark, font=font)
+            text_w = bbox[2] - bbox[0]
+            text_h = bbox[3] - bbox[1]
+
+            # Position bottom right with padding
+            x = img.width - text_w - 15
+            y = img.height - text_h - 15
+
+            # Draw shadow
+            draw.text((x+2, y+2), watermark, font=font, fill=(0, 0, 0, 180))
+            # Draw text
+            draw.text((x, y), watermark, font=font, fill=(255, 255, 255, 230))
+        except Exception as e:
+            print("  -> Watermark failed: " + str(e))
+
+        img.save(compressed_path, "JPEG", quality=85, optimize=True)
         return compressed_path
     except Exception as e:
         print("Compression failed: " + str(e))
@@ -830,13 +859,43 @@ def send_telegram_text(message):
     send_discord(message)
 
 
+def send_teaser(bias_overall, grade, date_str):
+    """Send a short teaser to the free channel to create FOMO."""
+    if not TELEGRAM_FREE_CHANNEL:
+        return
+    msg  = "📊 <b>NQ1! Daily Bias | " + date_str + "</b>\n"
+    msg += "--------------------\n"
+    msg += "<b>" + bias_overall + "</b> | Grade: <b>" + grade + "</b>\n"
+    msg += "--------------------\n"
+    msg += "Full analysis + chart + iFVG levels in premium channel\n"
+    msg += "Join: @SmokeyNQBot\n"
+    msg += "<i>Not financial advice.</i>"
+    url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendMessage"
+    try:
+        requests.post(url, json={
+            "chat_id": TELEGRAM_FREE_CHANNEL,
+            "text": msg,
+            "parse_mode": "HTML",
+        }, timeout=10)
+        print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Teaser sent to free channel.")
+    except Exception as e:
+        print("  -> Teaser send error: " + str(e))
+
+
 def strip_html(text):
-    """Remove HTML tags for Discord which uses markdown instead."""
+    """Convert Telegram HTML to Discord markdown."""
     import re
-    text = re.sub(r"<b>(.*?)</b>", r"****", text)
-    text = re.sub(r"<i>(.*?)</i>", r"**", text)
+    # Convert bold
+    text = re.sub(r"<b>(.*?)</b>", r"****", text, flags=re.DOTALL)
+    # Convert italic
+    text = re.sub(r"<i>(.*?)</i>", r"**", text, flags=re.DOTALL)
+    # Convert HTML entities
+    text = text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+    # Remove any remaining HTML tags
     text = re.sub(r"<[^>]+>", "", text)
-    return text
+    # Clean up extra blank lines
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 def send_discord(message, image_path=None):
@@ -936,6 +995,12 @@ def run_morning_bias():
 
         caption = build_morning_caption(current_price, midnight_open, asia_high, asia_low,
                                         london_high, london_low, pdh, pdl, bias, ifvgs)
+
+        # Send teaser to free channel
+        grade = bias.get("grade", "C")
+        if grade == "A" and ifvgs:
+            grade = "A+"
+        send_teaser(bias["overall"], grade, datetime.now(ET).strftime("%a %b %d"))
         if screenshot and screenshot.exists():
             send_telegram_photo(screenshot, caption)
         else:
@@ -1110,6 +1175,154 @@ def run_weekend_recap():
             pass
 
 
+
+
+def build_weekly_performance_post():
+    """Sunday - clean performance summary for social media."""
+    data = load_winrate()
+    wins     = data["wins"]
+    losses   = data["losses"]
+    neutrals = data["neutrals"]
+    total    = wins + losses
+    week_history = data["history"][-5:] if data["history"] else []
+    week_wins   = sum(1 for r in week_history if r["result"] == "W")
+    week_losses = sum(1 for r in week_history if r["result"] == "L")
+    week_chops  = sum(1 for r in week_history if r["result"] == "C")
+    week_streak = "".join(r["result"] for r in week_history)
+
+    date_str = datetime.now(ET).strftime("%b %d, %Y")
+
+    msg  = "📊 <b>Smokey Bias - Weekly Performance</b>\n"
+    msg += "Week ending " + date_str + "\n"
+    msg += "--------------------\n"
+    msg += "<b>This Week:</b>  " + str(week_wins) + "W  " + str(week_losses) + "L  " + str(week_chops) + "C\n"
+    if week_streak:
+        msg += "Streak: " + week_streak + "\n"
+    msg += "\n"
+    if total >= 10:
+        pct = round(wins / total * 100)
+        msg += "<b>Overall Accuracy: " + str(pct) + "%</b> (" + str(total) + " trading days)\n"
+    else:
+        msg += "<i>Building track record...</i>\n"
+    msg += "--------------------\n"
+    msg += "Daily bias alerts for NQ1! futures\n"
+    msg += "Midnight Open + Asia/London sessions + 1H iFVGs\n"
+    msg += "--------------------\n"
+    msg += "Join free: @SmokeyNQBot\n"
+    msg += "<i>Not financial advice.</i>"
+    return msg
+
+
+def run_weekly_performance():
+    """Sunday 10 AM ET - post weekly performance to all channels."""
+    print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running weekly performance post...")
+    try:
+        msg = build_weekly_performance_post()
+        send_telegram_text(msg)
+    except Exception as e:
+        try:
+            send_telegram_text("<b>Weekly Performance Error:</b> " + str(e))
+        except Exception:
+            pass
+
+
+def run_monthly_report():
+    """1st of month - full breakdown of last month's performance."""
+    now_et = datetime.now(ET)
+    # Only run on 1st of month
+    if now_et.day != 1:
+        return
+
+    print("\n[" + now_et.strftime("%Y-%m-%d %H:%M ET") + "] Running monthly report...")
+    try:
+        data = load_winrate()
+        wins     = data["wins"]
+        losses   = data["losses"]
+        neutrals = data["neutrals"]
+        total    = wins + losses
+        history  = data["history"][-22:] if data["history"] else []  # ~1 month
+
+        # Count results
+        month_wins   = sum(1 for r in history if r["result"] == "W")
+        month_losses = sum(1 for r in history if r["result"] == "L")
+        month_chops  = sum(1 for r in history if r["result"] == "C")
+        month_total  = month_wins + month_losses
+        month_pct    = round(month_wins / month_total * 100) if month_total > 0 else 0
+        month_streak = "".join(r["result"] for r in history)
+
+        # Best bias direction
+        bull_wins = sum(1 for r in history if r.get("bias") == "bullish" and r["result"] == "W")
+        bear_wins = sum(1 for r in history if r.get("bias") == "bearish" and r["result"] == "W")
+        bull_total = sum(1 for r in history if r.get("bias") == "bullish" and r["result"] in ["W","L"])
+        bear_total = sum(1 for r in history if r.get("bias") == "bearish" and r["result"] in ["W","L"])
+        bull_pct = round(bull_wins / bull_total * 100) if bull_total > 0 else 0
+        bear_pct = round(bear_wins / bear_total * 100) if bear_total > 0 else 0
+
+        prev_month = (now_et.replace(day=1) - timedelta(days=1)).strftime("%B %Y")
+        msg  = "📋 <b>Monthly Report | " + prev_month + "</b>\n"
+        msg += "--------------------\n"
+        msg += "<b>Results:</b>\n"
+        msg += str(month_wins) + "W  " + str(month_losses) + "L  " + str(month_chops) + "C\n"
+        msg += "<b>Accuracy: " + str(month_pct) + "%</b> (" + str(month_total) + " directional days)\n"
+        msg += "Streak: " + month_streak + "\n\n"
+        msg += "<b>By Direction:</b>\n"
+        msg += "Bullish bias: " + str(bull_pct) + "% (" + str(bull_wins) + "/" + str(bull_total) + ")\n"
+        msg += "Bearish bias: " + str(bear_pct) + "% (" + str(bear_wins) + "/" + str(bear_total) + ")\n"
+        msg += "--------------------\n"
+        if total >= 10:
+            overall_pct = round(wins / total * 100)
+            msg += "<b>All-Time Win Rate: " + str(overall_pct) + "%</b> (" + str(total) + " days)\n"
+        msg += "--------------------\n"
+        msg += "<i>Not financial advice.</i>"
+
+        send_telegram_text(msg)
+
+    except Exception as e:
+        try:
+            send_telegram_text("<b>Monthly Report Error:</b> " + str(e))
+        except Exception:
+            pass
+
+
+def run_trade_of_week():
+    """Friday EOD - highlight the best bias delivery of the week."""
+    print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running trade of the week...")
+    try:
+        data = load_winrate()
+        week_history = data["history"][-5:] if data["history"] else []
+        wins_this_week = [r for r in week_history if r["result"] == "W"]
+
+        date_str = datetime.now(ET).strftime("%b %d")
+        msg  = "🏆 <b>Bias of the Week | " + date_str + "</b>\n"
+        msg += "--------------------\n"
+
+        if not wins_this_week:
+            msg += "No winning biases this week\n"
+            msg += "Chop week - market was indecisive\n"
+        else:
+            # Show the wins
+            msg += str(len(wins_this_week)) + " bias" + ("es" if len(wins_this_week) > 1 else "") + " delivered this week\n\n"
+            for r in wins_this_week:
+                msg += "✅ " + r.get("date", "") + " - " + r.get("bias", "").upper() + " delivered\n"
+
+        msg += "--------------------\n"
+        week_wins   = len(wins_this_week)
+        week_losses = sum(1 for r in week_history if r["result"] == "L")
+        week_chops  = sum(1 for r in week_history if r["result"] == "C")
+        msg += "Week: " + str(week_wins) + "W  " + str(week_losses) + "L  " + str(week_chops) + "C\n"
+        msg += "--------------------\n"
+        msg += "Follow for daily NQ bias alerts\n"
+        msg += "Join: @SmokeyNQBot\n"
+        msg += "<i>Not financial advice.</i>"
+
+        send_telegram_text(msg)
+
+    except Exception as e:
+        try:
+            send_telegram_text("<b>Trade of Week Error:</b> " + str(e))
+        except Exception:
+            pass
+
 # SCHEDULER
 
 def main():
@@ -1119,31 +1332,24 @@ def main():
     print("  13:00 UTC (09:00 ET) - NYO update + chart")
     print("  20:00 UTC (16:00 ET) - EOD score + win rate")
 
-    schedule.every().monday.at("11:00").do(run_news_job)
-    schedule.every().tuesday.at("11:00").do(run_news_job)
-    schedule.every().wednesday.at("11:00").do(run_news_job)
-    schedule.every().thursday.at("11:00").do(run_news_job)
-    schedule.every().friday.at("11:00").do(run_news_job)
-    schedule.every().monday.at("12:30").do(run_morning_bias)
-    schedule.every().tuesday.at("12:30").do(run_morning_bias)
-    schedule.every().wednesday.at("12:30").do(run_morning_bias)
-    schedule.every().thursday.at("12:30").do(run_morning_bias)
-    schedule.every().friday.at("12:30").do(run_morning_bias)
-    schedule.every().monday.at("13:00").do(run_nyo_update)
-    schedule.every().tuesday.at("13:00").do(run_nyo_update)
-    schedule.every().wednesday.at("13:00").do(run_nyo_update)
-    schedule.every().thursday.at("13:00").do(run_nyo_update)
-    schedule.every().friday.at("13:00").do(run_nyo_update)
-    schedule.every().monday.at("20:00").do(run_eod_score)
-    schedule.every().tuesday.at("20:00").do(run_eod_score)
-    schedule.every().wednesday.at("20:00").do(run_eod_score)
-    schedule.every().thursday.at("20:00").do(run_eod_score)
-    schedule.every().friday.at("20:00").do(run_eod_score)
-    schedule.every().saturday.at("14:00").do(run_weekend_recap)
+    # Weekday only jobs
+    for day in [schedule.every().monday, schedule.every().tuesday, schedule.every().wednesday,
+                schedule.every().thursday, schedule.every().friday]:
+        day.at("11:00").do(run_news_job)
+        day.at("12:30").do(run_morning_bias)
+        day.at("13:00").do(run_nyo_update)
+        day.at("20:00").do(run_eod_score)
 
+    # Weekend jobs
+    schedule.every().friday.at("21:00").do(run_trade_of_week)
+    schedule.every().saturday.at("14:00").do(run_weekend_recap)
+    schedule.every().sunday.at("14:00").do(run_weekly_performance)
+
+    # Monthly report - runs daily but checks if 1st of month
+    schedule.every().day.at("12:30").do(run_monthly_report)
     # Uncomment to test immediately
     # run_news_job()
-    run_morning_bias()
+    # run_morning_bias()
     # run_nyo_update()
     # run_eod_score()
 
