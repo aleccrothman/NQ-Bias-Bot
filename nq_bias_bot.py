@@ -49,6 +49,37 @@ SCREENSHOT_PATH = Path("/tmp/nq_chart.png")
 WINRATE_FILE      = Path("/tmp/nq_winrate.json")
 TODAY_STATE_FILE  = Path("/tmp/today_state.json")
 LEVELS_FILE     = Path("/tmp/tv_levels.json")
+JOBS_RAN_FILE   = Path("/tmp/jobs_ran.json")
+
+
+
+def load_jobs_ran():
+    """Load today's jobs-ran state from disk."""
+    try:
+        if not JOBS_RAN_FILE.exists():
+            return {}
+        data = json.loads(JOBS_RAN_FILE.read_text())
+        today = datetime.now(ET).strftime("%Y-%m-%d")
+        if data.get("date") == today:
+            return data.get("ran", {})
+        return {}
+    except Exception:
+        return {}
+
+def mark_job_ran(job_name):
+    """Record that a job has run today."""
+    try:
+        today = datetime.now(ET).strftime("%Y-%m-%d")
+        ran = load_jobs_ran()
+        ran[job_name] = datetime.now(ET).strftime("%H:%M ET")
+        JOBS_RAN_FILE.write_text(json.dumps({"date": today, "ran": ran}))
+    except Exception as e:
+        print("  -> Failed to mark job ran: " + str(e))
+
+def job_already_ran(job_name):
+    """Return True if this job already ran today."""
+    ran = load_jobs_ran()
+    return job_name in ran
 
 
 def load_tv_levels():
@@ -362,12 +393,62 @@ def build_news_message(all_events):
     return msg
 
 
+
+def build_discord_news(all_events):
+    """Build a Discord embed for the macro news calendar."""
+    today_et  = datetime.now(ET).date()
+    today_str = today_et.strftime("%a %b %d")
+
+    if not all_events:
+        return {
+            "title": "\U0001f4f0  Macro Calendar  |  " + today_str,
+            "description": "\u2705 No high/medium impact USD news today",
+            "color": 0x22c55e,
+            "footer": {"text": "Smokey Bias Bot  \u2022  Not financial advice."},
+            "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+
+    fields = []
+    has_kill_zone = False
+    for date_key, events in all_events.items():
+        is_today = date_key == today_str
+        field_name = "\U0001f4c5  TODAY" if is_today else "\U0001f4c5  " + date_key
+        field_val = ""
+        for e in events:
+            impact_icon = "\U0001f534" if e["impact"] == "red" else "\U0001f7e0"
+            kz = " \u26a1 **KILL ZONE**" if e["during_kill_zone"] else ""
+            if e["during_kill_zone"]:
+                has_kill_zone = True
+            field_val += impact_icon + " **" + e["time"] + "** \u2014 " + e["event"] + kz + "\n"
+            if is_today and (e["forecast"] != "-" or e["previous"] != "-"):
+                field_val += "  \u2514 F: `" + e["forecast"] + "`  P: `" + e["previous"] + "`\n"
+        fields.append({"name": field_name, "value": field_val.strip(), "inline": False})
+
+    footer_text = "Smokey Bias Bot  \u2022  Not financial advice."
+    if has_kill_zone:
+        footer_text = "\u26a0\ufe0f  News during NY Kill Zone \u2014 trade carefully  \u2022  " + footer_text
+
+    return {
+        "title": "\U0001f4f0  Macro Calendar  |  " + today_str,
+        "description": "High & medium impact USD events",
+        "color": 0x3b82f6,
+        "fields": fields,
+        "footer": {"text": footer_text},
+        "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
+
 def run_news_job():
     print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running macro news job...")
     try:
         all_events = get_forex_factory_news(days=3)
-        msg = build_news_message(all_events)
-        send_telegram_text(msg)
+        # Telegram (HTML)
+        tg_msg = build_news_message(all_events)
+        send_telegram_text(tg_msg)
+        # Discord (embed)
+        news_embed = build_discord_news(all_events)
+        send_discord_embed(news_embed)
+        mark_job_ran("news")
     except Exception as e:
         try:
             send_telegram_text("<b>News Error:</b> " + str(e))
@@ -390,6 +471,32 @@ def fetch_candles_yf(start_utc, end_utc, interval="1m"):
             "low": float(row["Low"]), "close": float(row["Close"]),
         })
     return candles
+
+
+def get_vix():
+    """Fetch current VIX level."""
+    try:
+        ticker = yf.Ticker("^VIX")
+        df = ticker.history(period="1d", interval="1m")
+        if not df.empty:
+            return round(float(df["Close"].iloc[-1]), 2)
+    except Exception:
+        pass
+    return None
+
+def build_vix_line(vix):
+    """Return a one-liner sentiment note based on VIX level."""
+    if vix is None:
+        return ""
+    if vix >= 30:
+        return "\U0001f6a8 VIX **" + str(vix) + "** — High fear, expect wide ranges & whips. Size down."
+    elif vix >= 20:
+        return "\u26a0\ufe0f VIX **" + str(vix) + "** — Elevated volatility. Watch for news reactions."
+    elif vix >= 15:
+        return "\U0001f7e1 VIX **" + str(vix) + "** — Moderate vol. Normal conditions."
+    else:
+        return "\U0001f7e2 VIX **" + str(vix) + "** — Low vol. Tight ranges, grind likely."
+
 
 def get_session_windows():
     now_et = datetime.now(ET)
@@ -1011,6 +1118,11 @@ def build_discord_morning(current_price, midnight_open, asia_high, asia_low,
             ifvg_val += zone_icon + " `" + fmt(z["bottom"]) + " – " + fmt(z["top"]) + "` " + side + "  *(" + str(round(z["dist"])) + "pts away)*\n"
         ifvg_val = ifvg_val.strip()
 
+    vix      = get_vix()
+    vix_line = build_vix_line(vix)
+    if vix_line:
+        description += "\n" + vix_line
+
     embed = {
         "title": "📊  NQ1! Daily Bias  |  " + date_str,
         "description": description,
@@ -1181,6 +1293,7 @@ def run_morning_bias():
             "date": datetime.now(ET).strftime("%Y-%m-%d"),
         })
         save_today_state()
+        mark_job_ran("morning")
 
         caption = build_morning_caption(current_price, midnight_open, asia_high, asia_low,
                                         london_high, london_low, pdh, pdl, bias, ifvgs)
@@ -1212,6 +1325,7 @@ def run_morning_bias():
 def run_nyo_update():
     print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running NYO update...")
     try:
+        mark_job_ran("nyo")
         current_price = get_current_price()
         if not current_price or not today_state["midnight_open"]:
             send_telegram_text("NYO Update: No data available.")
@@ -1255,6 +1369,68 @@ def run_nyo_update():
             pass
 
 
+
+def build_discord_eod(bias_direction, result_type, current_price, midnight_open, price_diff, winrate_data):
+    """Build a Discord embed for the EOD score."""
+    date_str = datetime.now(ET).strftime("%a %b %d")
+    wins     = winrate_data["wins"]
+    losses   = winrate_data["losses"]
+    neutrals = winrate_data["neutrals"]
+    total    = wins + losses
+    streak   = "".join(r["result"] for r in winrate_data["history"][-10:])
+
+    if result_type == "win":
+        verdict     = "DELIVERED"
+        result_icon = "\u2705"
+        color       = 0x22c55e
+    elif result_type == "failed":
+        verdict     = "FAILED"
+        result_icon = "\u274c"
+        color       = 0xe74c3c
+    else:
+        verdict     = "CHOPPY DAY"
+        result_icon = "\u26aa"
+        color       = 0x95a5a6
+
+    bias_icon    = "\U0001f7e2" if bias_direction == "bullish" else "\U0001f534" if bias_direction == "bearish" else "\u26aa"
+    direction_arrow = "\u2191" if price_diff > 0 else "\u2193"
+    diff_str     = str(round(abs(price_diff))) + "pts " + direction_arrow + " from MO"
+
+    if result_type == "choppy":
+        reason = "Price stayed within 75pts of MO \u2014 no clear delivery"
+    elif result_type == "failed":
+        reason = "Price moved against bias direction"
+    else:
+        reason = "Price moved " + str(round(abs(price_diff))) + "pts in bias direction \u2714"
+
+    # Win rate field
+    if total >= 10:
+        pct = round(wins / total * 100)
+        wr_val = "**" + str(pct) + "%** accuracy (" + str(total) + " directional days)\n"
+        wr_val += "`" + str(wins) + "W` `" + str(losses) + "L` `" + str(neutrals) + "C`"
+    else:
+        remaining = 10 - total
+        wr_val = "`" + str(wins) + "W` `" + str(losses) + "L` `" + str(neutrals) + "C`\n"
+        wr_val += "*" + str(remaining) + " more days to unlock win rate %*"
+
+    streak_display = " ".join(list(streak)) if streak else "\u2014"
+
+    embed = {
+        "title": "\U0001f4cb  EOD Score  |  " + date_str,
+        "description": bias_icon + " **" + bias_direction.upper() + "** \u2192 " + result_icon + " **" + verdict + "**",
+        "color": color,
+        "fields": [
+            {"name": "\U0001f4cd  Price Action", "value": "`Close` **" + fmt(current_price) + "**\n`MO   ` **" + fmt(midnight_open) + "**\n" + diff_str, "inline": True},
+            {"name": "\U0001f4ac  Verdict",      "value": reason, "inline": False},
+            {"name": "\U0001f3c6  Win Rate",      "value": wr_val, "inline": True},
+            {"name": "\U0001f4c8  Last 10",       "value": streak_display if streak_display != "\u2014" else "*Building...*", "inline": True},
+        ],
+        "footer": {"text": "Smokey Bias Bot  \u2022  Not financial advice.  \u2022  W=Win  C=Chop  L=Loss"},
+        "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    return embed
+
+
 def run_eod_score():
     print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running EOD score...")
     try:
@@ -1278,8 +1454,13 @@ def run_eod_score():
             result_type = "choppy"
 
         winrate_data = record_result_v2(direction, result_type)
-        msg = build_eod_message_v2(direction, result_type, current_price, mo, price_diff, winrate_data)
-        send_telegram_text(msg)
+        mark_job_ran("eod")
+        # Telegram (HTML)
+        tg_msg = build_eod_message_v2(direction, result_type, current_price, mo, price_diff, winrate_data)
+        send_telegram_text(tg_msg)
+        # Discord (embed)
+        eod_embed = build_discord_eod(direction, result_type, current_price, mo, price_diff, winrate_data)
+        send_discord_embed(eod_embed)
     except Exception as e:
         try:
             send_telegram_text("<b>EOD Score Error:</b> " + str(e))
@@ -1526,15 +1707,14 @@ def run_trade_of_week():
 
 def run_catchup():
     """
-    On startup, immediately run any jobs that should have already fired today
-    but were missed due to a redeploy or restart.
+    On startup, run any jobs that should have already fired today but haven't yet.
+    Uses a jobs_ran state file so redeployments never double-post.
     """
     now_utc = datetime.now(UTC)
     now_et  = now_utc.astimezone(ET)
     dow     = now_et.strftime("%A")
     is_weekday = dow in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 
-    # Convert current time to minutes-since-midnight UTC for easy comparison
     now_utc_mins = now_utc.hour * 60 + now_utc.minute
 
     print("\n[CATCHUP] Bot started at " + now_et.strftime("%Y-%m-%d %H:%M ET") + " (" + str(now_utc.hour) + ":" + str(now_utc.minute).zfill(2) + " UTC)")
@@ -1544,30 +1724,32 @@ def run_catchup():
         return
 
     # (scheduled UTC minutes, grace buffer mins, job name, function)
-    # We add a small grace buffer so we don't re-fire a job that ran 1 min ago
     catchup_jobs = [
-        (11 * 60,       5,  "Macro News",   run_news_job),      # 11:00 UTC
-        (12 * 60 + 30,  5,  "Morning Bias", run_morning_bias),  # 12:30 UTC
-        (13 * 60,       5,  "NYO Update",   run_nyo_update),    # 13:00 UTC
-        (20 * 60,       5,  "EOD Score",    run_eod_score),     # 20:00 UTC
+        (11 * 60,       5,  "news",    run_news_job),
+        (12 * 60 + 30,  5,  "morning", run_morning_bias),
+        (13 * 60,       5,  "nyo",     run_nyo_update),
+        (20 * 60,       5,  "eod",     run_eod_score),
     ]
 
     ran_any = False
     for sched_mins, grace, job_name, job_fn in catchup_jobs:
-        fire_after = sched_mins + grace  # only catch up if we're past scheduled time + grace
+        fire_after = sched_mins + grace
         if now_utc_mins >= fire_after:
-            print("[CATCHUP] ⚡ Running missed job: " + job_name + " (scheduled " + str(sched_mins // 60) + ":" + str(sched_mins % 60).zfill(2) + " UTC)")
-            try:
-                job_fn()
-                ran_any = True
-                time.sleep(5)  # small gap between back-to-back catchup jobs
-            except Exception as e:
-                print("[CATCHUP] Error in " + job_name + ": " + str(e))
+            if job_already_ran(job_name):
+                print("[CATCHUP] ✓ " + job_name + " already ran today at " + load_jobs_ran().get(job_name, "?") + " - skipping")
+            else:
+                print("[CATCHUP] ⚡ Running missed job: " + job_name + " (scheduled " + str(sched_mins // 60) + ":" + str(sched_mins % 60).zfill(2) + " UTC)")
+                try:
+                    job_fn()
+                    ran_any = True
+                    time.sleep(5)
+                except Exception as e:
+                    print("[CATCHUP] Error in " + job_name + ": " + str(e))
         else:
             print("[CATCHUP] ✓ " + job_name + " not yet due - will run at scheduled time")
 
     if not ran_any:
-        print("[CATCHUP] No missed jobs - all caught up")
+        print("[CATCHUP] No missed jobs to run")
     print("[CATCHUP] Done.\n")
 
 
