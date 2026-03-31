@@ -265,6 +265,7 @@ def get_forex_factory_news(days=3):
             # Convert GMT time to ET
             display_time = "All Day"
             during_kill_zone = False
+            et_hour = -1
             if time_str_raw and time_str_raw.strip():
                 try:
                     # XML times are like "8:30am" in GMT
@@ -501,20 +502,16 @@ def compute_bias(midnight_open, current_price, asia_high, asia_low, london_high,
 
     if london_high > asia_high:
         if london_close is not None and london_close < asia_high:
-            # Swept Asia High but closed back inside = bearish trap/reversal = BEARISH signal
             signals["london_break"] = ("-1", "BEAR", "London swept Asia High (" + fmt(london_high) + ") then closed back below - bearish trap")
             score -= 1
         else:
-            # Broke above and held = BULLISH
             signals["london_break"] = ("+1", "BULL", "London broke above Asia High (" + fmt(london_high) + ")")
             score += 1
     elif london_low < asia_low:
         if london_close is not None and london_close > asia_low:
-            # Swept Asia Low but closed back inside = bullish trap/reversal = BULLISH signal
             signals["london_break"] = ("+1", "BULL", "London swept Asia Low (" + fmt(london_low) + ") then closed back above - bullish reversal")
             score += 1
         else:
-            # Broke below and held = BEARISH
             signals["london_break"] = ("-1", "BEAR", "London broke below Asia Low (" + fmt(london_low) + ")")
             score -= 1
     else:
@@ -531,14 +528,9 @@ def compute_bias(midnight_open, current_price, asia_high, asia_low, london_high,
     else:
         overall, direction = "NEUTRAL / MIXED", "neutral"
 
-    # Confidence grade (DodgyDD A+ setup logic)
-    # A+ = all 3 signals agree AND iFVG in zone (checked later)
-    # A  = all 3 signals agree
-    # B  = 2/3 signals agree
-    # C  = 1/3 or mixed
     abs_score = abs(score)
     if abs_score == 3:
-        grade = "A"   # upgraded to A+ if iFVG present (done in build_morning_caption)
+        grade = "A"
     elif abs_score == 2:
         grade = "B"
     elif abs_score == 1:
@@ -556,12 +548,10 @@ def build_morning_caption(current_price, midnight_open, asia_high, asia_low,
     date_str = datetime.now(ET).strftime("%a %b %d")
     score_str = ("+" if bias["score"] > 0 else "") + str(bias["score"]) + "/3"
 
-    # Upgrade to A+ if all 3 signals agree AND iFVG nearby
     grade = bias.get("grade", "C")
     if grade == "A" and ifvgs:
         grade = "A+"
 
-    # Day of week context
     dow = datetime.now(ET).strftime("%A")
     dow_notes = {
         "Monday":    "Mon - Watch for manipulation",
@@ -661,7 +651,6 @@ def build_nyo_message_with_ifvgs(current_price, bias, midnight_open,
     if not ifvgs:
         return base
 
-    # Insert iFVG section before the last two lines
     ifvg_section = "--------------------\n"
     ifvg_section += "<b>1H iFVGs +/-" + str(IFVG_RANGE_PTS) + "pts:</b>\n"
     for z in ifvgs:
@@ -670,7 +659,6 @@ def build_nyo_message_with_ifvgs(current_price, bias, midnight_open,
         ifvg_section += zone_icon + " " + fmt(z["bottom"]) + " - " + fmt(z["top"]) + "  " + side + "  (" + str(round(z["dist"])) + "pts)\n"
         ifvg_section += "   " + z["target"] + "\n"
 
-    # Insert before the last kill zone line
     insert_before = "--------------------\n⏰"
     base = base.replace(insert_before, ifvg_section + insert_before)
     return base
@@ -785,29 +773,23 @@ def compress_screenshot(image_path):
             ratio = max_width / img.width
             img = img.resize((max_width, int(img.height * ratio)), Image.LANCZOS)
 
-        # Add watermark
         try:
             draw = ImageDraw.Draw(img)
             watermark = "Smokey Bias | t.me/SmokeyNQBot"
-            # Use default font
             font_size = max(16, img.width // 50)
             try:
                 font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
             except Exception:
                 font = ImageFont.load_default()
 
-            # Get text size
             bbox = draw.textbbox((0, 0), watermark, font=font)
             text_w = bbox[2] - bbox[0]
             text_h = bbox[3] - bbox[1]
 
-            # Position bottom right with padding
             x = img.width - text_w - 15
             y = img.height - text_h - 15
 
-            # Draw shadow
             draw.text((x+2, y+2), watermark, font=font, fill=(0, 0, 0, 180))
-            # Draw text
             draw.text((x, y), watermark, font=font, fill=(255, 255, 255, 230))
         except Exception as e:
             print("  -> Watermark failed: " + str(e))
@@ -822,7 +804,6 @@ def compress_screenshot(image_path):
 # TELEGRAM
 
 def send_telegram_photo(image_path, caption):
-    # Verify file exists and has content
     if not image_path or not image_path.exists():
         print("  -> No screenshot file found, sending text only")
         send_telegram_text(caption)
@@ -834,13 +815,11 @@ def send_telegram_photo(image_path, caption):
 
     compressed = compress_screenshot(image_path)
 
-    # Verify compressed file
     if not compressed.exists() or compressed.stat().st_size < 1000:
         print("  -> Compressed file invalid, sending text only")
         send_telegram_text(caption)
         return
 
-    # Telegram caption max is 1024 chars
     safe_caption = caption
     if len(safe_caption) > 1024:
         safe_caption = safe_caption[:1020] + "..."
@@ -858,7 +837,6 @@ def send_telegram_photo(image_path, caption):
                 }, files={"photo": img}, timeout=30)
                 if not resp.ok:
                     print("  -> Photo send failed: " + resp.text)
-                    # Try without HTML parsing
                     with open(compressed, "rb") as img2:
                         resp2 = requests.post(url, data={
                             "chat_id": chat_id,
@@ -915,15 +893,10 @@ def send_teaser(bias_overall, grade, date_str):
 def strip_html(text):
     """Convert Telegram HTML to Discord markdown."""
     import re
-    # Convert bold
-    text = re.sub(r"<b>(.*?)</b>", r"****", text, flags=re.DOTALL)
-    # Convert italic
-    text = re.sub(r"<i>(.*?)</i>", r"**", text, flags=re.DOTALL)
-    # Convert HTML entities
+    text = re.sub(r"<b>(.*?)</b>", r"****", text, flags=re.DOTALL)
+    text = re.sub(r"<i>(.*?)</i>", r"**", text, flags=re.DOTALL)
     text = text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
-    # Remove any remaining HTML tags
     text = re.sub(r"<[^>]+>", "", text)
-    # Clean up extra blank lines
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
@@ -1076,7 +1049,6 @@ def run_morning_bias():
     print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running morning bias job...")
     windows = get_session_windows()
     try:
-        # Try TradingView webhook levels first (accurate), fall back to Yahoo Finance
         tv = load_tv_levels()
         if tv.get("midnight_open") and tv.get("asia_high") and tv.get("london_high"):
             print("  -> Using TradingView webhook levels")
@@ -1085,7 +1057,7 @@ def run_morning_bias():
             asia_low      = tv["asia_low"]
             london_high   = tv["london_high"]
             london_low    = tv["london_low"]
-            london_close  = london_low  # approximate
+            london_close  = london_low
             _             = None
         else:
             print("  -> No TV webhook levels found, using Yahoo Finance")
@@ -1096,7 +1068,6 @@ def run_morning_bias():
         current_price = get_current_price() or midnight_open
         screenshot = take_chart_screenshot()
 
-        # Log what we have
         missing = []
         if not midnight_open: missing.append("midnight_open")
         if not asia_high: missing.append("asia_high")
@@ -1108,7 +1079,6 @@ def run_morning_bias():
         if missing:
             print("  -> Missing data: " + str(missing))
 
-        # Only abort if we are missing critical levels (midnight open + at least one session)
         critical_missing = not midnight_open or not current_price or (not asia_high and not london_high)
         if critical_missing:
             caption = "NQ Bias Bot: Missing session data - " + str(missing)
@@ -1118,7 +1088,6 @@ def run_morning_bias():
                 send_telegram_text(caption)
             return
 
-        # Fill any missing values with approximations
         if not asia_high and london_high:
             asia_high = london_high
             asia_low  = london_low
@@ -1142,7 +1111,6 @@ def run_morning_bias():
         caption = build_morning_caption(current_price, midnight_open, asia_high, asia_low,
                                         london_high, london_low, pdh, pdl, bias, ifvgs)
 
-        # Send teaser to free channel
         grade = bias.get("grade", "C")
         if grade == "A" and ifvgs:
             grade = "A+"
@@ -1153,7 +1121,6 @@ def run_morning_bias():
             caption += "\nChart screenshot unavailable."
             send_telegram_text(caption)
 
-        # Send Discord-native message
         discord_msg = build_discord_morning(current_price, midnight_open, asia_high, asia_low,
                                             london_high, london_low, pdh, pdl, bias, ifvgs)
         if screenshot and screenshot.exists():
@@ -1195,7 +1162,6 @@ def run_nyo_update():
         else:
             send_telegram_text(msg)
 
-        # Send Discord-native NYO message
         discord_nyo = build_discord_nyo(
             current_price, bias,
             today_state["midnight_open"],
@@ -1213,6 +1179,8 @@ def run_nyo_update():
             send_telegram_text("<b>NYO Update Error:</b> " + str(e))
         except Exception:
             pass
+
+
 def run_eod_score():
     print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running EOD score...")
     try:
@@ -1223,13 +1191,9 @@ def run_eod_score():
             send_telegram_text("EOD Score: No bias data for today.")
             return
 
-        price_diff = current_price - mo  # positive = above MO, negative = below MO
+        price_diff = current_price - mo
         abs_diff   = abs(price_diff)
 
-        # Scoring logic:
-        # CHOPPY  - price closed within 75pts of MO either direction
-        # WIN     - price moved 100+ pts in bias direction
-        # FAILED  - price moved 100+ pts against bias direction
         if abs_diff <= 75:
             result_type = "choppy"
         elif direction == "bullish":
@@ -1247,7 +1211,6 @@ def run_eod_score():
             send_telegram_text("<b>EOD Score Error:</b> " + str(e))
         except Exception:
             pass
-
 
 
 def send_welcome_message(chat_id):
@@ -1296,7 +1259,6 @@ def run_weekend_recap():
         neutrals = data["neutrals"]
         total    = wins + losses
 
-        # Get this week's history (last 5 entries)
         week_history = data["history"][-5:] if data["history"] else []
         week_wins   = sum(1 for r in week_history if r["result"] == "W")
         week_losses = sum(1 for r in week_history if r["result"] == "L")
@@ -1341,8 +1303,6 @@ def run_weekend_recap():
             send_telegram_text("<b>Weekend Recap Error:</b> " + str(e))
         except Exception:
             pass
-
-
 
 
 def build_weekly_performance_post():
@@ -1397,7 +1357,6 @@ def run_weekly_performance():
 def run_monthly_report():
     """1st of month - full breakdown of last month's performance."""
     now_et = datetime.now(ET)
-    # Only run on 1st of month
     if now_et.day != 1:
         return
 
@@ -1408,9 +1367,8 @@ def run_monthly_report():
         losses   = data["losses"]
         neutrals = data["neutrals"]
         total    = wins + losses
-        history  = data["history"][-22:] if data["history"] else []  # ~1 month
+        history  = data["history"][-22:] if data["history"] else []
 
-        # Count results
         month_wins   = sum(1 for r in history if r["result"] == "W")
         month_losses = sum(1 for r in history if r["result"] == "L")
         month_chops  = sum(1 for r in history if r["result"] == "C")
@@ -1418,7 +1376,6 @@ def run_monthly_report():
         month_pct    = round(month_wins / month_total * 100) if month_total > 0 else 0
         month_streak = "".join(r["result"] for r in history)
 
-        # Best bias direction
         bull_wins = sum(1 for r in history if r.get("bias") == "bullish" and r["result"] == "W")
         bear_wins = sum(1 for r in history if r.get("bias") == "bearish" and r["result"] == "W")
         bull_total = sum(1 for r in history if r.get("bias") == "bullish" and r["result"] in ["W","L"])
@@ -1468,7 +1425,6 @@ def run_trade_of_week():
             msg += "No winning biases this week\n"
             msg += "Chop week - market was indecisive\n"
         else:
-            # Show the wins
             msg += str(len(wins_this_week)) + " bias" + ("es" if len(wins_this_week) > 1 else "") + " delivered this week\n\n"
             for r in wins_this_week:
                 msg += "✅ " + r.get("date", "") + " - " + r.get("bias", "").upper() + " delivered\n"
@@ -1491,6 +1447,56 @@ def run_trade_of_week():
         except Exception:
             pass
 
+
+# ── STARTUP CATCHUP ──────────────────────────────────────────────────────────
+
+def run_catchup():
+    """
+    On startup, immediately run any jobs that should have already fired today
+    but were missed due to a redeploy or restart.
+    """
+    now_utc = datetime.now(UTC)
+    now_et  = now_utc.astimezone(ET)
+    dow     = now_et.strftime("%A")
+    is_weekday = dow in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+
+    # Convert current time to minutes-since-midnight UTC for easy comparison
+    now_utc_mins = now_utc.hour * 60 + now_utc.minute
+
+    print("\n[CATCHUP] Bot started at " + now_et.strftime("%Y-%m-%d %H:%M ET") + " (" + str(now_utc.hour) + ":" + str(now_utc.minute).zfill(2) + " UTC)")
+
+    if not is_weekday:
+        print("[CATCHUP] Weekend - skipping weekday job catchup\n")
+        return
+
+    # (scheduled UTC minutes, grace buffer mins, job name, function)
+    # We add a small grace buffer so we don't re-fire a job that ran 1 min ago
+    catchup_jobs = [
+        (11 * 60,       5,  "Macro News",   run_news_job),      # 11:00 UTC
+        (12 * 60 + 30,  5,  "Morning Bias", run_morning_bias),  # 12:30 UTC
+        (13 * 60,       5,  "NYO Update",   run_nyo_update),    # 13:00 UTC
+        (20 * 60,       5,  "EOD Score",    run_eod_score),     # 20:00 UTC
+    ]
+
+    ran_any = False
+    for sched_mins, grace, job_name, job_fn in catchup_jobs:
+        fire_after = sched_mins + grace  # only catch up if we're past scheduled time + grace
+        if now_utc_mins >= fire_after:
+            print("[CATCHUP] ⚡ Running missed job: " + job_name + " (scheduled " + str(sched_mins // 60) + ":" + str(sched_mins % 60).zfill(2) + " UTC)")
+            try:
+                job_fn()
+                ran_any = True
+                time.sleep(5)  # small gap between back-to-back catchup jobs
+            except Exception as e:
+                print("[CATCHUP] Error in " + job_name + ": " + str(e))
+        else:
+            print("[CATCHUP] ✓ " + job_name + " not yet due - will run at scheduled time")
+
+    if not ran_any:
+        print("[CATCHUP] No missed jobs - all caught up")
+    print("[CATCHUP] Done.\n")
+
+
 # SCHEDULER
 
 def main():
@@ -1502,6 +1508,17 @@ def main():
     print("  12:00 UTC (08:00 ET) - Morning bias + chart")
     print("  13:00 UTC (09:00 ET) - NYO update + chart")
     print("  20:00 UTC (16:00 ET) - EOD score + win rate")
+
+    # ── Uncomment to test any job immediately on startup ─────────────────────
+    # run_news_job()
+    # run_morning_bias()
+    # run_nyo_update()
+    # run_eod_score()
+    # ─────────────────────────────────────────────────────────────────────────
+
+    # ── Run catchup on every startup/redeploy ────────────────────────────────
+    run_catchup()
+    # ─────────────────────────────────────────────────────────────────────────
 
     # Weekday only jobs
     for day in [schedule.every().monday, schedule.every().tuesday, schedule.every().wednesday,
@@ -1518,12 +1535,6 @@ def main():
 
     # Monthly report - runs daily but checks if 1st of month
     schedule.every().day.at("12:30").do(run_monthly_report)
-    
-    # Uncomment to test immediately
-    # run_news_job()
-    # run_morning_bias()
-    # run_nyo_update()
-    # run_eod_score()
 
     while True:
         schedule.run_pending()
