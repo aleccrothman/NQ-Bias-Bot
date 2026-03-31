@@ -27,10 +27,10 @@ TV_USERNAME  = os.getenv("TV_USERNAME", "")
 TV_PASSWORD  = os.getenv("TV_PASSWORD", "")
 TV_CHART_URL = "https://www.tradingview.com/chart/hcbriKzA/"  # Your saved 15m NQ chart
 
-DISCORD_WEBHOOK_NEWS  = os.getenv("DISCORD_WEBHOOK_NEWS",  "https://discordapp.com/api/webhooks/1488609215571427549/6PeeOKepS4Om4-kz-Ewrsb7W0HZKsFWV-tyz240F5kQqY_IkGfkLYHp-kRS1AAIMCQ2z")
-DISCORD_WEBHOOK_BIAS  = os.getenv("DISCORD_WEBHOOK_BIAS",  "https://discordapp.com/api/webhooks/1487311821676220517/WGqBxbjlSRtuu2guxoD1x64AdYv9JikmHBixlUgCm9pkoUs9WRdkiMdy_PFdaaTOXjyC")
-DISCORD_WEBHOOK_NYO   = os.getenv("DISCORD_WEBHOOK_NYO",   "https://discordapp.com/api/webhooks/1488609101079646239/1MFd6nixOlRkMq_Uxn0c_xTCW0h4udiPqOyMXqsi7tLA43morS9DX66j_kXpojHbbwU0")
-DISCORD_WEBHOOK_EOD   = os.getenv("DISCORD_WEBHOOK_EOD",   "https://discordapp.com/api/webhooks/1488609381980438709/Op7vHk9zm91IfJYtzgRVkC3shK8lI3cZsR2eX_jQEM_O7OY_dqc1BdcAszI8BA4yK_Td")
+DISCORD_WEBHOOK_NEWS  = os.getenv("DISCORD_WEBHOOK_NEWS",  "")
+DISCORD_WEBHOOK_BIAS  = os.getenv("DISCORD_WEBHOOK_BIAS",  "")
+DISCORD_WEBHOOK_NYO   = os.getenv("DISCORD_WEBHOOK_NYO",   "")
+DISCORD_WEBHOOK_EOD   = os.getenv("DISCORD_WEBHOOK_EOD",   "")
 
 SYMBOL          = "NQ=F"
 IFVG_RANGE_PTS  = 100
