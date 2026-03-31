@@ -902,8 +902,31 @@ def strip_html(text):
     return text.strip()
 
 
+def send_discord_embed(embed, image_path=None):
+    """Send a Discord embed via webhook, with optional image attachment."""
+    if not DISCORD_WEBHOOK:
+        return
+    try:
+        if image_path and Path(image_path).exists() and Path(image_path).stat().st_size > 1000:
+            compressed = compress_screenshot(Path(image_path))
+            embed["image"] = {"url": "attachment://chart.jpg"}
+            payload = {"embeds": [embed]}
+            with open(compressed, "rb") as img:
+                requests.post(
+                    DISCORD_WEBHOOK,
+                    data={"payload_json": json.dumps(payload)},
+                    files={"file": ("chart.jpg", img, "image/jpeg")},
+                    timeout=30,
+                )
+        else:
+            requests.post(DISCORD_WEBHOOK, json={"embeds": [embed]}, timeout=10)
+        print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Discord embed sent.")
+    except Exception as e:
+        print("  -> Discord embed send error: " + str(e))
+
+
 def send_discord_raw(content, image_path=None):
-    """Send a raw message to Discord webhook."""
+    """Send a plain text message to Discord webhook (used for news/EOD)."""
     if not DISCORD_WEBHOOK:
         return
     try:
@@ -922,7 +945,7 @@ def send_discord_raw(content, image_path=None):
 
 def build_discord_morning(current_price, midnight_open, asia_high, asia_low,
                           london_high, london_low, pdh, pdl, bias, ifvgs):
-    """Build a clean Discord-native morning bias message using Discord markdown."""
+    """Build a Discord embed dict for the morning bias post."""
     date_str  = datetime.now(ET).strftime("%a %b %d")
     score_str = ("+" if bias["score"] > 0 else "") + str(bias["score"]) + "/3"
     grade     = bias.get("grade", "C")
@@ -931,98 +954,140 @@ def build_discord_morning(current_price, midnight_open, asia_high, asia_low,
 
     dow = datetime.now(ET).strftime("%A")
     dow_notes = {
-        "Monday": "Mon - Watch for manipulation",
-        "Tuesday": "Tue - Typical delivery day",
+        "Monday":    "Mon - Watch for manipulation",
+        "Tuesday":   "Tue - Typical delivery day",
         "Wednesday": "Wed - Typical delivery day",
-        "Thursday": "Thu - Typical delivery day",
-        "Friday": "Fri - Watch for reversals",
+        "Thursday":  "Thu - Typical delivery day",
+        "Friday":    "Fri - Watch for reversals",
     }
-    dow_note  = dow_notes.get(dow, "")
-    bias_icon = "🟢" if "BULLISH" in bias["overall"] else "🔴" if "BEARISH" in bias["overall"] else "⚪"
-    vote_icons = {"+1": "🟢", "-1": "🔴", " 0": "⚪"}
+    dow_note = dow_notes.get(dow, "")
 
-    msg  = "--------------------\n"
-    msg += "📊 **NQ1! Daily Bias | " + date_str + "**\n"
-    if dow_note:
-        msg += "*" + dow_note + "*\n"
-    msg += "--------------------\n"
-    msg += bias_icon + " **" + bias["overall"] + "**  |  " + score_str + "  |  Grade: **" + grade + "**\n"
-    msg += "--------------------\n"
-    msg += "📍 Price:   **" + fmt(current_price) + "**\n"
-    msg += "🕛 MO:      **" + fmt(midnight_open) + "**\n"
+    if "BULLISH" in bias["overall"]:
+        color = 0x22c55e
+        bias_icon = "🟢"
+    elif "BEARISH" in bias["overall"]:
+        color = 0xe74c3c
+        bias_icon = "🔴"
+    else:
+        color = 0x95a5a6
+        bias_icon = "⚪"
+
+    vote_icons = {"+1": "🟢", "-1": "🔴", "0": "⚪"}
+
+    levels_val  = "📍 Price  **" + fmt(current_price) + "**\n"
+    levels_val += "🕛 MO      **" + fmt(midnight_open) + "**\n"
     if pdh and pdl:
-        msg += "📅 PDH:     **" + fmt(pdh) + "**   PDL: **" + fmt(pdl) + "**\n"
-    msg += "🌏 Asia:    H **" + fmt(asia_high) + "**  L **" + fmt(asia_low) + "**\n"
-    msg += "🌍 London:  H **" + fmt(london_high) + "**  L **" + fmt(london_low) + "**\n"
-    msg += "--------------------\n"
-    msg += "**Signal Breakdown:**\n"
-    labels = {"midnight_open": "MO     ", "asia_range": "Asia   ", "london_break": "London "}
+        levels_val += "📅 PDH   **" + fmt(pdh) + "**\n"
+        levels_val += "📅 PDL    **" + fmt(pdl) + "**"
+
+    sessions_val  = "🌏 Asia H  **" + fmt(asia_high) + "**\n"
+    sessions_val += "🌏 Asia L   **" + fmt(asia_low) + "**\n"
+    sessions_val += "🌍 Lon H  **" + fmt(london_high) + "**\n"
+    sessions_val += "🌍 Lon L   **" + fmt(london_low) + "**"
+
+    labels = {"midnight_open": "MO    ", "asia_range": "Asia  ", "london_break": "London"}
+    signals_val = ""
     for key, (vote, direction, detail) in bias["signals"].items():
         icon = vote_icons.get(vote.strip(), "⚪")
-        msg += icon + " " + labels[key] + " *" + detail + "*\n"
-    msg += "--------------------\n"
-    msg += "**1H iFVGs +/-" + str(IFVG_RANGE_PTS) + "pts:**\n"
+        signals_val += icon + " **" + labels[key] + "** " + detail + "\n"
+    signals_val = signals_val.strip()
+
     if not ifvgs:
-        msg += "- None nearby\n"
+        ifvg_val = "None nearby"
     else:
+        ifvg_val = ""
         for z in ifvgs:
             zone_icon = "🟩" if z["relation"] == "below" else "🟥"
-            side = "Support (up)" if z["relation"] == "below" else "Resistance (down)"
-            msg += zone_icon + " " + fmt(z["bottom"]) + " - " + fmt(z["top"]) + "  " + side + "  (" + str(round(z["dist"])) + "pts)\n"
-            msg += "   " + z["target"] + "\n"
-    msg += "--------------------\n"
-    msg += "*Not financial advice.*"
-    return msg
+            side = "Support ↑" if z["relation"] == "below" else "Resistance ↓"
+            ifvg_val += zone_icon + " **" + fmt(z["bottom"]) + " - " + fmt(z["top"]) + "** " + side + " (" + str(round(z["dist"])) + "pts)\n"
+        ifvg_val = ifvg_val.strip()
+
+    description = bias_icon + " **" + bias["overall"] + "**  |  " + score_str + "  |  Grade: **" + grade + "**"
+    if dow_note:
+        description += "\n*" + dow_note + "*"
+
+    embed = {
+        "title": "📊 NQ1! Daily Bias  |  " + date_str,
+        "description": description,
+        "color": color,
+        "fields": [
+            {"name": "Key Levels",   "value": levels_val,   "inline": True},
+            {"name": "Sessions",     "value": sessions_val, "inline": True},
+            {"name": "​",       "value": "​",     "inline": False},
+            {"name": "Signal Breakdown", "value": signals_val, "inline": False},
+            {"name": "1H iFVGs +/-" + str(IFVG_RANGE_PTS) + "pts", "value": ifvg_val, "inline": False},
+        ],
+        "footer": {"text": "Smokey Bias Bot  •  Not financial advice."},
+        "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    return embed
 
 
 def build_discord_nyo(current_price, bias, midnight_open,
                       asia_high, asia_low, london_high, london_low, pdh, pdl, ifvgs):
-    """Build Discord-native NYO update message."""
-    date_str   = datetime.now(ET).strftime("%a %b %d")
-    bias_icon  = "🟢" if "BULLISH" in bias["overall"] else "🔴" if "BEARISH" in bias["overall"] else "⚪"
-    direction  = bias["direction"]
-    mo         = midnight_open
+    """Build a Discord embed dict for the NYO update."""
+    date_str  = datetime.now(ET).strftime("%a %b %d")
+    direction = bias["direction"]
+    mo        = midnight_open
+
+    if "BULLISH" in bias["overall"]:
+        color = 0x22c55e
+        bias_icon = "🟢"
+    elif "BEARISH" in bias["overall"]:
+        color = 0xe74c3c
+        bias_icon = "🔴"
+    else:
+        color = 0x95a5a6
+        bias_icon = "⚪"
 
     if direction == "bullish":
         respecting = current_price > mo
-        status     = "✅ Bias respected - price holding above MO" if respecting else "⚠️ Bias challenged - price below MO"
+        status = "✅ Bias respected - price holding above MO" if respecting else "⚠️ Bias challenged - price below MO"
     elif direction == "bearish":
         respecting = current_price < mo
-        status     = "✅ Bias respected - price holding below MO" if respecting else "⚠️ Bias challenged - price above MO"
+        status = "✅ Bias respected - price holding below MO" if respecting else "⚠️ Bias challenged - price above MO"
     else:
         status = "⚪ Neutral bias - no directional expectation"
 
     def dist_label(price, level, name):
         diff  = price - level
         arrow = "above" if diff > 0 else "below"
-        return name + ": " + fmt(level) + " (" + str(round(abs(diff))) + "pts " + arrow + ")"
+        return "**" + name + ":** " + fmt(level) + " (" + str(round(abs(diff))) + "pts " + arrow + ")"
 
-    msg  = "--------------------\n"
-    msg += "🔔 **NYO Update | " + date_str + "**\n"
-    msg += "--------------------\n"
-    msg += bias_icon + " **" + bias["overall"] + "**  |  📍 **" + fmt(current_price) + "**\n"
-    msg += status + "\n"
-    msg += "--------------------\n"
-    msg += "**Price vs Key Levels:**\n"
-    msg += "🕛 " + dist_label(current_price, mo, "MO") + "\n"
+    levels_val  = "🕛 " + dist_label(current_price, mo, "MO") + "\n"
     if pdh and pdl:
-        msg += "📅 " + dist_label(current_price, pdh, "PDH") + "\n"
-        msg += "📅 " + dist_label(current_price, pdl, "PDL") + "\n"
-    msg += "🌏 " + dist_label(current_price, asia_high, "Asia H") + "\n"
-    msg += "🌏 " + dist_label(current_price, asia_low,  "Asia L") + "\n"
-    msg += "🌍 " + dist_label(current_price, london_high, "London H") + "\n"
-    msg += "🌍 " + dist_label(current_price, london_low,  "London L") + "\n"
+        levels_val += "📅 " + dist_label(current_price, pdh, "PDH") + "\n"
+        levels_val += "📅 " + dist_label(current_price, pdl, "PDL") + "\n"
+    levels_val += "🌏 " + dist_label(current_price, asia_high, "Asia H") + "\n"
+    levels_val += "🌏 " + dist_label(current_price, asia_low, "Asia L") + "\n"
+    levels_val += "🌍 " + dist_label(current_price, london_high, "London H") + "\n"
+    levels_val += "🌍 " + dist_label(current_price, london_low, "London L")
+
+    ifvg_val = ""
     if ifvgs:
-        msg += "--------------------\n"
-        msg += "**1H iFVGs +/-" + str(IFVG_RANGE_PTS) + "pts:**\n"
         for z in ifvgs:
             zone_icon = "🟩" if z["relation"] == "below" else "🟥"
-            side = "Support (up)" if z["relation"] == "below" else "Resistance (down)"
-            msg += zone_icon + " " + fmt(z["bottom"]) + " - " + fmt(z["top"]) + "  " + side + "  (" + str(round(z["dist"])) + "pts)\n"
-    msg += "--------------------\n"
-    msg += "⏰ *NY Kill Zone: 7-10 AM ET*\n"
-    msg += "*Not financial advice.*"
-    return msg
+            side = "Support ↑" if z["relation"] == "below" else "Resistance ↓"
+            ifvg_val += zone_icon + " **" + fmt(z["bottom"]) + " - " + fmt(z["top"]) + "** " + side + " (" + str(round(z["dist"])) + "pts)\n"
+        ifvg_val = ifvg_val.strip()
+
+    fields = [
+        {"name": "Status", "value": status, "inline": False},
+        {"name": "Price vs Key Levels", "value": levels_val, "inline": False},
+    ]
+    if ifvg_val:
+        fields.append({"name": "1H iFVGs +/-" + str(IFVG_RANGE_PTS) + "pts", "value": ifvg_val, "inline": False})
+    fields.append({"name": "⏰ NY Kill Zone", "value": "7:00 - 10:00 AM ET", "inline": False})
+
+    embed = {
+        "title": "🔔 NYO Update  |  " + date_str,
+        "description": bias_icon + " **" + bias["overall"] + "**  |  📍 **" + fmt(current_price) + "**",
+        "color": color,
+        "fields": fields,
+        "footer": {"text": "Smokey Bias Bot  •  Not financial advice."},
+        "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    return embed
 
 
 def send_discord(message, image_path=None):
@@ -1125,9 +1190,9 @@ def run_morning_bias():
         discord_msg = build_discord_morning(current_price, midnight_open, asia_high, asia_low,
                                             london_high, london_low, pdh, pdl, bias, ifvgs)
         if screenshot and screenshot.exists():
-            send_discord_raw(discord_msg, screenshot)
+            send_discord_embed(discord_msg, screenshot)
         else:
-            send_discord_raw(discord_msg)
+            send_discord_embed(discord_msg)
 
     except Exception as e:
         try:
@@ -1172,9 +1237,9 @@ def run_nyo_update():
             nyo_ifvgs,
         )
         if screenshot and screenshot.exists():
-            send_discord_raw(discord_nyo, screenshot)
+            send_discord_embed(discord_nyo, screenshot)
         else:
-            send_discord_raw(discord_nyo)
+            send_discord_embed(discord_nyo)
     except Exception as e:
         try:
             send_telegram_text("<b>NYO Update Error:</b> " + str(e))
