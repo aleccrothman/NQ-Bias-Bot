@@ -57,25 +57,27 @@ JOBS_RAN_FILE   = Path("/tmp/jobs_ran.json")
 
 
 def load_jobs_ran():
-    """Load today's jobs-ran state from disk."""
+    """Load today's jobs-ran state - stored inside winrate file for persistence."""
     try:
-        if not JOBS_RAN_FILE.exists():
-            return {}
-        data = json.loads(JOBS_RAN_FILE.read_text())
+        data = load_winrate()
         today = datetime.now(ET).strftime("%Y-%m-%d")
-        if data.get("date") == today:
-            return data.get("ran", {})
+        jobs = data.get("jobs_ran", {})
+        if jobs.get("date") == today:
+            return jobs.get("ran", {})
         return {}
     except Exception:
         return {}
 
 def mark_job_ran(job_name):
-    """Record that a job has run today."""
+    """Record that a job has run today - persisted in winrate file."""
     try:
         today = datetime.now(ET).strftime("%Y-%m-%d")
         ran = load_jobs_ran()
         ran[job_name] = datetime.now(ET).strftime("%H:%M ET")
-        JOBS_RAN_FILE.write_text(json.dumps({"date": today, "ran": ran}))
+        data = load_winrate()
+        data["jobs_ran"] = {"date": today, "ran": ran}
+        save_winrate(data)
+        print("  -> Marked job ran: " + job_name)
     except Exception as e:
         print("  -> Failed to mark job ran: " + str(e))
 
@@ -1778,7 +1780,7 @@ def main():
     # ─────────────────────────────────────────────────────────────────────────
 
     # ── Run catchup on every startup/redeploy ────────────────────────────────
-    run_catchup()
+    # run_catchup()
     # ─────────────────────────────────────────────────────────────────────────
 
     # Weekday only jobs
