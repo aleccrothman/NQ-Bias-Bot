@@ -483,10 +483,10 @@ def compute_bias(midnight_open, current_price, asia_high, asia_low, london_high,
     signals, score = {}, 0
 
     if current_price > midnight_open:
-        signals["midnight_open"] = ("+1", "BULL", "Price " + fmt(current_price) + " &gt; MO " + fmt(midnight_open))
+        signals["midnight_open"] = ("+1", "BULL", "Price " + fmt(current_price) + " > MO " + fmt(midnight_open))
         score += 1
     elif current_price < midnight_open:
-        signals["midnight_open"] = ("-1", "BEAR", "Price " + fmt(current_price) + " &lt; MO " + fmt(midnight_open))
+        signals["midnight_open"] = ("-1", "BEAR", "Price " + fmt(current_price) + " < MO " + fmt(midnight_open))
         score -= 1
     else:
         signals["midnight_open"] = (" 0", "NEUT", "Price at MO " + fmt(midnight_open))
@@ -582,7 +582,8 @@ def build_morning_caption(current_price, midnight_open, asia_high, asia_low,
     labels = {"midnight_open": "MO     ", "asia_range": "Asia   ", "london_break": "London "}
     for key, (vote, direction, detail) in bias["signals"].items():
         icon = vote_icons.get(vote.strip(), "⚪")
-        msg += icon + " " + labels[key] + " <i>" + detail + "</i>\n"
+        tg_detail = detail.replace(">", "&gt;").replace("<", "&lt;")
+        msg += icon + " " + labels[key] + " <i>" + tg_detail + "</i>\n"
     msg += "--------------------\n"
     msg += "<b>1H iFVGs +/-" + str(IFVG_RANGE_PTS) + "pts:</b>\n"
     if not ifvgs:
