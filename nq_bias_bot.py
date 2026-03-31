@@ -945,7 +945,7 @@ def send_discord_raw(content, image_path=None):
 
 def build_discord_morning(current_price, midnight_open, asia_high, asia_low,
                           london_high, london_low, pdh, pdl, bias, ifvgs):
-    """Build a Discord embed dict for the morning bias post."""
+    """Build a polished Discord embed for the morning bias post."""
     date_str  = datetime.now(ET).strftime("%a %b %d")
     score_str = ("+" if bias["score"] > 0 else "") + str(bias["score"]) + "/3"
     grade     = bias.get("grade", "C")
@@ -954,68 +954,72 @@ def build_discord_morning(current_price, midnight_open, asia_high, asia_low,
 
     dow = datetime.now(ET).strftime("%A")
     dow_notes = {
-        "Monday":    "Mon - Watch for manipulation",
-        "Tuesday":   "Tue - Typical delivery day",
-        "Wednesday": "Wed - Typical delivery day",
-        "Thursday":  "Thu - Typical delivery day",
-        "Friday":    "Fri - Watch for reversals",
+        "Monday":    "Mon — Watch for manipulation",
+        "Tuesday":   "Tue — Typical delivery day",
+        "Wednesday": "Wed — Typical delivery day",
+        "Thursday":  "Thu — Typical delivery day",
+        "Friday":    "Fri — Watch for reversals",
     }
     dow_note = dow_notes.get(dow, "")
 
     if "BULLISH" in bias["overall"]:
-        color = 0x22c55e
+        color     = 0x22c55e
         bias_icon = "🟢"
     elif "BEARISH" in bias["overall"]:
-        color = 0xe74c3c
+        color     = 0xe74c3c
         bias_icon = "🔴"
     else:
-        color = 0x95a5a6
+        color     = 0x95a5a6
         bias_icon = "⚪"
 
     vote_icons = {"+1": "🟢", "-1": "🔴", "0": "⚪"}
 
-    levels_val  = "📍 Price  **" + fmt(current_price) + "**\n"
-    levels_val += "🕛 MO      **" + fmt(midnight_open) + "**\n"
-    if pdh and pdl:
-        levels_val += "📅 PDH   **" + fmt(pdh) + "**\n"
-        levels_val += "📅 PDL    **" + fmt(pdl) + "**"
+    description  = bias_icon + " **" + bias["overall"] + "**"
+    description += "   Score: **" + score_str + "**   Grade: **" + grade + "**"
+    if dow_note:
+        description += "\n> *" + dow_note + "*"
 
-    sessions_val  = "🌏 Asia H  **" + fmt(asia_high) + "**\n"
-    sessions_val += "🌏 Asia L   **" + fmt(asia_low) + "**\n"
-    sessions_val += "🌍 Lon H  **" + fmt(london_high) + "**\n"
-    sessions_val += "🌍 Lon L   **" + fmt(london_low) + "**"
+    levels_val  = "`Price ` **" + fmt(current_price) + "**\n"
+    levels_val += "`MO    ` **" + fmt(midnight_open) + "**\n"
+    if pdh and pdl:
+        levels_val += "`PDH   ` **" + fmt(pdh) + "**\n"
+        levels_val += "`PDL   ` **" + fmt(pdl) + "**"
+
+    sessions_val  = "`Asia H` **" + fmt(asia_high) + "**\n"
+    sessions_val += "`Asia L` **" + fmt(asia_low) + "**\n"
+    sessions_val += "`Lon H ` **" + fmt(london_high) + "**\n"
+    sessions_val += "`Lon L ` **" + fmt(london_low) + "**"
 
     labels = {"midnight_open": "MO    ", "asia_range": "Asia  ", "london_break": "London"}
     signals_val = ""
     for key, (vote, direction, detail) in bias["signals"].items():
         icon = vote_icons.get(vote.strip(), "⚪")
-        signals_val += icon + " **" + labels[key] + "** " + detail + "\n"
+        signals_val += icon + " `" + labels[key] + "` — " + detail + "\n"
     signals_val = signals_val.strip()
 
     if not ifvgs:
-        ifvg_val = "None nearby"
+        ifvg_val = "*No iFVGs within 100pts*"
     else:
         ifvg_val = ""
         for z in ifvgs:
-            zone_icon = "🟩" if z["relation"] == "below" else "🟥"
-            side = "Support ↑" if z["relation"] == "below" else "Resistance ↓"
-            ifvg_val += zone_icon + " **" + fmt(z["bottom"]) + " - " + fmt(z["top"]) + "** " + side + " (" + str(round(z["dist"])) + "pts)\n"
+            if z["relation"] == "below":
+                zone_icon = "🟩"
+                side      = "Support ↑"
+            else:
+                zone_icon = "🟥"
+                side      = "Resistance ↓"
+            ifvg_val += zone_icon + " `" + fmt(z["bottom"]) + " – " + fmt(z["top"]) + "` " + side + "  *(" + str(round(z["dist"])) + "pts away)*\n"
         ifvg_val = ifvg_val.strip()
 
-    description = bias_icon + " **" + bias["overall"] + "**  |  " + score_str + "  |  Grade: **" + grade + "**"
-    if dow_note:
-        description += "\n*" + dow_note + "*"
-
     embed = {
-        "title": "📊 NQ1! Daily Bias  |  " + date_str,
+        "title": "📊  NQ1! Daily Bias  |  " + date_str,
         "description": description,
         "color": color,
         "fields": [
-            {"name": "Key Levels",   "value": levels_val,   "inline": True},
-            {"name": "Sessions",     "value": sessions_val, "inline": True},
-            {"name": "​",       "value": "​",     "inline": False},
-            {"name": "Signal Breakdown", "value": signals_val, "inline": False},
-            {"name": "1H iFVGs +/-" + str(IFVG_RANGE_PTS) + "pts", "value": ifvg_val, "inline": False},
+            {"name": "📌  Key Levels",  "value": levels_val,   "inline": True},
+            {"name": "🌅  Sessions",    "value": sessions_val, "inline": True},
+            {"name": "🔍  Signal Breakdown", "value": signals_val, "inline": False},
+            {"name": "⚡  1H iFVGs ±" + str(IFVG_RANGE_PTS) + "pts", "value": ifvg_val, "inline": False},
         ],
         "footer": {"text": "Smokey Bias Bot  •  Not financial advice."},
         "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -1025,63 +1029,67 @@ def build_discord_morning(current_price, midnight_open, asia_high, asia_low,
 
 def build_discord_nyo(current_price, bias, midnight_open,
                       asia_high, asia_low, london_high, london_low, pdh, pdl, ifvgs):
-    """Build a Discord embed dict for the NYO update."""
+    """Build a polished Discord embed for the NYO update."""
     date_str  = datetime.now(ET).strftime("%a %b %d")
     direction = bias["direction"]
     mo        = midnight_open
 
     if "BULLISH" in bias["overall"]:
-        color = 0x22c55e
+        color     = 0x22c55e
         bias_icon = "🟢"
     elif "BEARISH" in bias["overall"]:
-        color = 0xe74c3c
+        color     = 0xe74c3c
         bias_icon = "🔴"
     else:
-        color = 0x95a5a6
+        color     = 0x95a5a6
         bias_icon = "⚪"
 
     if direction == "bullish":
         respecting = current_price > mo
-        status = "✅ Bias respected - price holding above MO" if respecting else "⚠️ Bias challenged - price below MO"
+        status     = "✅ **Bias respected** — price holding above MO" if respecting else "⚠️ **Bias challenged** — price below MO"
     elif direction == "bearish":
         respecting = current_price < mo
-        status = "✅ Bias respected - price holding below MO" if respecting else "⚠️ Bias challenged - price above MO"
+        status     = "✅ **Bias respected** — price holding below MO" if respecting else "⚠️ **Bias challenged** — price above MO"
     else:
-        status = "⚪ Neutral bias - no directional expectation"
+        status = "⚪ **Neutral** — no directional expectation"
 
     def dist_label(price, level, name):
         diff  = price - level
-        arrow = "above" if diff > 0 else "below"
-        return "**" + name + ":** " + fmt(level) + " (" + str(round(abs(diff))) + "pts " + arrow + ")"
+        arrow = "↑" if diff > 0 else "↓"
+        return "`" + name + "` **" + fmt(level) + "**  " + arrow + " " + str(round(abs(diff))) + "pts"
 
-    levels_val  = "🕛 " + dist_label(current_price, mo, "MO") + "\n"
+    levels_val  = dist_label(current_price, mo, "MO     ") + "\n"
     if pdh and pdl:
-        levels_val += "📅 " + dist_label(current_price, pdh, "PDH") + "\n"
-        levels_val += "📅 " + dist_label(current_price, pdl, "PDL") + "\n"
-    levels_val += "🌏 " + dist_label(current_price, asia_high, "Asia H") + "\n"
-    levels_val += "🌏 " + dist_label(current_price, asia_low, "Asia L") + "\n"
-    levels_val += "🌍 " + dist_label(current_price, london_high, "London H") + "\n"
-    levels_val += "🌍 " + dist_label(current_price, london_low, "London L")
+        levels_val += dist_label(current_price, pdh, "PDH    ") + "\n"
+        levels_val += dist_label(current_price, pdl, "PDL    ") + "\n"
+    levels_val += dist_label(current_price, asia_high, "Asia H ") + "\n"
+    levels_val += dist_label(current_price, asia_low,  "Asia L ") + "\n"
+    levels_val += dist_label(current_price, london_high, "Lon H  ") + "\n"
+    levels_val += dist_label(current_price, london_low,  "Lon L  ")
 
     ifvg_val = ""
     if ifvgs:
         for z in ifvgs:
-            zone_icon = "🟩" if z["relation"] == "below" else "🟥"
-            side = "Support ↑" if z["relation"] == "below" else "Resistance ↓"
-            ifvg_val += zone_icon + " **" + fmt(z["bottom"]) + " - " + fmt(z["top"]) + "** " + side + " (" + str(round(z["dist"])) + "pts)\n"
+            if z["relation"] == "below":
+                zone_icon = "🟩"
+                side      = "Support ↑"
+            else:
+                zone_icon = "🟥"
+                side      = "Resistance ↓"
+            ifvg_val += zone_icon + " `" + fmt(z["bottom"]) + " – " + fmt(z["top"]) + "` " + side + "  *(" + str(round(z["dist"])) + "pts away)*\n"
         ifvg_val = ifvg_val.strip()
 
     fields = [
-        {"name": "Status", "value": status, "inline": False},
-        {"name": "Price vs Key Levels", "value": levels_val, "inline": False},
+        {"name": "📋  Status", "value": status, "inline": False},
+        {"name": "📍  Price vs Key Levels", "value": levels_val, "inline": False},
     ]
     if ifvg_val:
-        fields.append({"name": "1H iFVGs +/-" + str(IFVG_RANGE_PTS) + "pts", "value": ifvg_val, "inline": False})
-    fields.append({"name": "⏰ NY Kill Zone", "value": "7:00 - 10:00 AM ET", "inline": False})
+        fields.append({"name": "⚡  1H iFVGs ±" + str(IFVG_RANGE_PTS) + "pts", "value": ifvg_val, "inline": False})
+    fields.append({"name": "⏰  NY Kill Zone", "value": "**7:00 – 10:00 AM ET** — trade carefully", "inline": False})
 
     embed = {
-        "title": "🔔 NYO Update  |  " + date_str,
-        "description": bias_icon + " **" + bias["overall"] + "**  |  📍 **" + fmt(current_price) + "**",
+        "title": "🔔  NYO Update  |  " + date_str,
+        "description": bias_icon + " **" + bias["overall"] + "**   📍 **" + fmt(current_price) + "**",
         "color": color,
         "fields": fields,
         "footer": {"text": "Smokey Bias Bot  •  Not financial advice."},
