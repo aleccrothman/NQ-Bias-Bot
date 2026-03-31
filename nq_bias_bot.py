@@ -27,7 +27,10 @@ TV_USERNAME  = os.getenv("TV_USERNAME", "")
 TV_PASSWORD  = os.getenv("TV_PASSWORD", "")
 TV_CHART_URL = "https://www.tradingview.com/chart/hcbriKzA/"  # Your saved 15m NQ chart
 
-DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK", "")
+DISCORD_WEBHOOK_NEWS  = os.getenv("DISCORD_WEBHOOK_NEWS",  "https://discordapp.com/api/webhooks/1488609215571427549/6PeeOKepS4Om4-kz-Ewrsb7W0HZKsFWV-tyz240F5kQqY_IkGfkLYHp-kRS1AAIMCQ2z")
+DISCORD_WEBHOOK_BIAS  = os.getenv("DISCORD_WEBHOOK_BIAS",  "https://discordapp.com/api/webhooks/1487311821676220517/WGqBxbjlSRtuu2guxoD1x64AdYv9JikmHBixlUgCm9pkoUs9WRdkiMdy_PFdaaTOXjyC")
+DISCORD_WEBHOOK_NYO   = os.getenv("DISCORD_WEBHOOK_NYO",   "https://discordapp.com/api/webhooks/1488609101079646239/1MFd6nixOlRkMq_Uxn0c_xTCW0h4udiPqOyMXqsi7tLA43morS9DX66j_kXpojHbbwU0")
+DISCORD_WEBHOOK_EOD   = os.getenv("DISCORD_WEBHOOK_EOD",   "https://discordapp.com/api/webhooks/1488609381980438709/Op7vHk9zm91IfJYtzgRVkC3shK8lI3cZsR2eX_jQEM_O7OY_dqc1BdcAszI8BA4yK_Td")
 
 SYMBOL          = "NQ=F"
 IFVG_RANGE_PTS  = 100
@@ -447,7 +450,7 @@ def run_news_job():
         send_telegram_text(tg_msg)
         # Discord (embed)
         news_embed = build_discord_news(all_events)
-        send_discord_embed(news_embed)
+        send_discord_embed(news_embed, webhook=DISCORD_WEBHOOK_NEWS)
         mark_job_ran("news")
     except Exception as e:
         try:
@@ -1009,9 +1012,10 @@ def strip_html(text):
     return text.strip()
 
 
-def send_discord_embed(embed, image_path=None):
+def send_discord_embed(embed, image_path=None, webhook=None):
     """Send a Discord embed via webhook, with optional image attachment."""
-    if not DISCORD_WEBHOOK:
+    url = webhook or DISCORD_WEBHOOK_BIAS
+    if not url:
         return
     try:
         if image_path and Path(image_path).exists() and Path(image_path).stat().st_size > 1000:
@@ -1020,31 +1024,32 @@ def send_discord_embed(embed, image_path=None):
             payload = {"embeds": [embed]}
             with open(compressed, "rb") as img:
                 requests.post(
-                    DISCORD_WEBHOOK,
+                    url,
                     data={"payload_json": json.dumps(payload)},
                     files={"file": ("chart.jpg", img, "image/jpeg")},
                     timeout=30,
                 )
         else:
-            requests.post(DISCORD_WEBHOOK, json={"embeds": [embed]}, timeout=10)
+            requests.post(url, json={"embeds": [embed]}, timeout=10)
         print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Discord embed sent.")
     except Exception as e:
         print("  -> Discord embed send error: " + str(e))
 
 
-def send_discord_raw(content, image_path=None):
+def send_discord_raw(content, image_path=None, webhook=None):
     """Send a plain text message to Discord webhook (used for news/EOD)."""
-    if not DISCORD_WEBHOOK:
+    url = webhook or DISCORD_WEBHOOK_BIAS
+    if not url:
         return
     try:
         if len(content) > 2000:
             content = content[:1997] + "..."
         if image_path and Path(image_path).exists() and Path(image_path).stat().st_size > 1000:
             with open(image_path, "rb") as img:
-                requests.post(DISCORD_WEBHOOK, data={"content": content},
+                requests.post(url, data={"content": content},
                     files={"file": ("chart.jpg", img, "image/jpeg")}, timeout=30)
         else:
-            requests.post(DISCORD_WEBHOOK, json={"content": content}, timeout=10)
+            requests.post(url, json={"content": content}, timeout=10)
         print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Discord sent.")
     except Exception as e:
         print("  -> Discord send error: " + str(e))
@@ -1311,9 +1316,9 @@ def run_morning_bias():
         discord_msg = build_discord_morning(current_price, midnight_open, asia_high, asia_low,
                                             london_high, london_low, pdh, pdl, bias, ifvgs)
         if screenshot and screenshot.exists():
-            send_discord_embed(discord_msg, screenshot)
+            send_discord_embed(discord_msg, screenshot, webhook=DISCORD_WEBHOOK_BIAS)
         else:
-            send_discord_embed(discord_msg)
+            send_discord_embed(discord_msg, webhook=DISCORD_WEBHOOK_BIAS)
 
     except Exception as e:
         try:
@@ -1359,9 +1364,9 @@ def run_nyo_update():
             nyo_ifvgs,
         )
         if screenshot and screenshot.exists():
-            send_discord_embed(discord_nyo, screenshot)
+            send_discord_embed(discord_nyo, screenshot, webhook=DISCORD_WEBHOOK_NYO)
         else:
-            send_discord_embed(discord_nyo)
+            send_discord_embed(discord_nyo, webhook=DISCORD_WEBHOOK_NYO)
     except Exception as e:
         try:
             send_telegram_text("<b>NYO Update Error:</b> " + str(e))
@@ -1460,7 +1465,7 @@ def run_eod_score():
         send_telegram_text(tg_msg)
         # Discord (embed)
         eod_embed = build_discord_eod(direction, result_type, current_price, mo, price_diff, winrate_data)
-        send_discord_embed(eod_embed)
+        send_discord_embed(eod_embed, webhook=DISCORD_WEBHOOK_EOD)
     except Exception as e:
         try:
             send_telegram_text("<b>EOD Score Error:</b> " + str(e))
