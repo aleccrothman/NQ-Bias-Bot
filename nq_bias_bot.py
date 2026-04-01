@@ -448,6 +448,9 @@ def run_news_job():
     try:
         all_events = get_forex_factory_news(days=3)
         # Telegram (HTML)
+        if job_already_ran("news"):
+            print("  -> News already ran today, skipping duplicate")
+            return
         tg_msg = build_news_message(all_events)
         send_telegram_text(tg_msg)
         # Discord (embed)
@@ -1299,6 +1302,9 @@ def run_morning_bias():
             "pdh": pdh, "pdl": pdl,
             "date": datetime.now(ET).strftime("%Y-%m-%d"),
         })
+        if job_already_ran("morning"):
+            print("  -> Morning bias already ran today, skipping duplicate")
+            return
         save_today_state()
         mark_job_ran("morning")
 
@@ -1332,6 +1338,9 @@ def run_morning_bias():
 def run_nyo_update():
     print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running NYO update...")
     try:
+        if job_already_ran("nyo"):
+            print("  -> NYO already ran today, skipping duplicate")
+            return
         mark_job_ran("nyo")
         current_price = get_current_price()
         if not current_price or not today_state["midnight_open"]:
@@ -1460,6 +1469,9 @@ def run_eod_score():
         else:
             result_type = "choppy"
 
+        if job_already_ran("eod"):
+            print("  -> EOD already ran today, skipping duplicate")
+            return
         winrate_data = record_result_v2(direction, result_type)
         mark_job_ran("eod")
         # Telegram (HTML)
@@ -1789,9 +1801,6 @@ def main():
     # run_nyo_update()
     # run_eod_score()
     # ─────────────────────────────────────────────────────────────────────────
-
-    # ── Clear jobs_ran so catchup fires all missed jobs on restart ────────────
-    clear_jobs_ran_for_today()
 
     # ── Run catchup on every startup/redeploy ────────────────────────────────
     run_catchup()
