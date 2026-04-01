@@ -1762,6 +1762,17 @@ def run_catchup():
 
 # SCHEDULER
 
+def clear_jobs_ran_for_today():
+    """Clear today's jobs_ran so catchup always fires missed jobs on restart."""
+    try:
+        data = load_winrate()
+        data["jobs_ran"] = {}
+        save_winrate(data)
+        print("[STARTUP] Cleared jobs_ran - catchup will fire all missed jobs")
+    except Exception as e:
+        print("[STARTUP] Failed to clear jobs_ran: " + str(e))
+
+
 def main():
     # Load today's state from disk in case of restart
     load_today_state()
@@ -1779,8 +1790,11 @@ def main():
     # run_eod_score()
     # ─────────────────────────────────────────────────────────────────────────
 
+    # ── Clear jobs_ran so catchup fires all missed jobs on restart ────────────
+    clear_jobs_ran_for_today()
+
     # ── Run catchup on every startup/redeploy ────────────────────────────────
-    # run_catchup()
+    run_catchup()
     # ─────────────────────────────────────────────────────────────────────────
 
     # Weekday only jobs
