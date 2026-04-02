@@ -1,0 +1,7 @@
+requests
+yfinance
+pytz
+playwright
+pillow
+beautifulsoup4
+schedule
