@@ -1943,4 +1943,13 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    print("Python version: " + sys.version)
+    print("Starting Smokey Bias Bot...")
+    try:
+        main()
+    except Exception as e:
+        import traceback
+        print("FATAL STARTUP ERROR: " + str(e))
+        traceback.print_exc()
+        sys.exit(1)
