@@ -1914,25 +1914,6 @@ def main():
 
     print("[SCHEDULER] Running tight time-check loop (checks every 30s)")
 
-    # On startup, catch up any missed jobs from earlier today (runs once)
-    now_utc_start = datetime.now(UTC)
-    now_et_start  = now_utc_start.astimezone(ET)
-    now_mins      = now_utc_start.hour * 60 + now_utc_start.minute
-    dow_start     = now_et_start.strftime("%A")
-    is_weekday_start = dow_start in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
-
-    if is_weekday_start:
-        catchup_map = [(11*60, "news", run_news_job), (12*60+30, "morning", run_morning_bias),
-                       (13*60, "nyo", run_nyo_update), (20*60, "eod", run_eod_score)]
-        for sched_m, jkey, jfn in catchup_map:
-            if now_mins > sched_m + 2 and not job_already_ran(jkey):
-                print("[STARTUP CATCHUP] Running missed job: " + jkey)
-                try:
-                    jfn()
-                    time.sleep(15)
-                except Exception as e:
-                    print("[STARTUP CATCHUP] Error: " + str(e))
-
     while True:
         now_utc = datetime.now(UTC)
         now_et  = now_utc.astimezone(ET)
