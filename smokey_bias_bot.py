@@ -447,9 +447,6 @@ def run_news_job():
     try:
         all_events = get_forex_factory_news(days=3)
         # Telegram (HTML)
-        if job_already_ran("news"):
-            print("  -> News already ran today, skipping duplicate")
-            return
         tg_msg = build_news_message(all_events)
         send_telegram_text(tg_msg)
         # Discord (embed)
@@ -1315,9 +1312,6 @@ def run_morning_bias():
             "pdh": pdh, "pdl": pdl,
             "date": datetime.now(ET).strftime("%Y-%m-%d"),
         })
-        if job_already_ran("morning"):
-            print("  -> Morning bias already ran today, skipping duplicate")
-            return
         save_today_state()
         mark_job_ran("morning")
 
@@ -1351,9 +1345,6 @@ def run_morning_bias():
 def run_nyo_update():
     print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running NYO update...")
     try:
-        if job_already_ran("nyo"):
-            print("  -> NYO already ran today, skipping duplicate")
-            return
         mark_job_ran("nyo")
         current_price = get_current_price()
         if not current_price or not today_state["midnight_open"]:
@@ -1482,9 +1473,6 @@ def run_eod_score():
         else:
             result_type = "choppy"
 
-        if job_already_ran("eod"):
-            print("  -> EOD already ran today, skipping duplicate")
-            return
         winrate_data = record_result_v2(direction, result_type)
         mark_job_ran("eod")
         # Telegram (HTML)
@@ -1821,6 +1809,7 @@ def main():
 
     # Jobs fired by exact UTC time check every 30 seconds
     # Format: (utc_hour, utc_minute, job_key, function, weekday_only)
+    fired_today = set()  # in-memory guard against double-firing
     JOBS = [
         (11,  0,  "news",    run_news_job,          True),
         (12, 30,  "morning", run_morning_bias,       True),
@@ -1853,13 +1842,17 @@ def main():
                     continue
                 if job_key == "totw" and dow != "Friday":
                     continue
-                # Check if already ran this minute
-                if not job_already_ran(job_key):
+                # Check both in-memory set AND persistent jobs_ran to prevent doubles
+                fire_key = job_key + "_" + datetime.now(ET).strftime("%Y-%m-%d")
+                if fire_key not in fired_today and not job_already_ran(job_key):
+                    fired_today.add(fire_key)
                     print("[SCHEDULER] Firing: " + job_key + " at " + str(utc_h) + ":" + str(utc_m).zfill(2) + " UTC")
                     try:
                         job_fn()
                     except Exception as e:
                         print("[SCHEDULER] Error in " + job_key + ": " + str(e))
+                elif fire_key in fired_today or job_already_ran(job_key):
+                    fired_today.add(fire_key)  # keep in memory too
 
         time.sleep(30)
 
