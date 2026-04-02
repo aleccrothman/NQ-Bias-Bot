@@ -443,6 +443,10 @@ def build_discord_news(all_events):
 
 
 def run_news_job():
+    if job_already_ran("news"):
+        print("  -> News already ran today, skipping")
+        return
+    mark_job_ran("news")
     print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running macro news job...")
     try:
         all_events = get_forex_factory_news(days=3)
@@ -452,7 +456,6 @@ def run_news_job():
         # Discord (embed)
         news_embed = build_discord_news(all_events)
         send_discord_embed(news_embed, webhook=DISCORD_WEBHOOK_NEWS)
-        mark_job_ran("news")
     except Exception as e:
         try:
             send_telegram_text("<b>News Error:</b> " + str(e))
@@ -1252,6 +1255,10 @@ def send_discord(message, image_path=None):
 # JOBS
 
 def run_morning_bias():
+    if job_already_ran("morning"):
+        print("  -> Morning bias already ran today, skipping")
+        return
+    mark_job_ran("morning")
     print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running morning bias job...")
     windows = get_session_windows()
     try:
@@ -1313,7 +1320,6 @@ def run_morning_bias():
             "date": datetime.now(ET).strftime("%Y-%m-%d"),
         })
         save_today_state()
-        mark_job_ran("morning")
 
         caption = build_morning_caption(current_price, midnight_open, asia_high, asia_low,
                                         london_high, london_low, pdh, pdl, bias, ifvgs)
@@ -1343,9 +1349,12 @@ def run_morning_bias():
 
 
 def run_nyo_update():
+    if job_already_ran("nyo"):
+        print("  -> NYO already ran today, skipping")
+        return
+    mark_job_ran("nyo")
     print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running NYO update...")
     try:
-        mark_job_ran("nyo")
         current_price = get_current_price()
         if not current_price or not today_state["midnight_open"]:
             send_telegram_text("NYO Update: No data available.")
@@ -1452,6 +1461,10 @@ def build_discord_eod(bias_direction, result_type, current_price, midnight_open,
 
 
 def run_eod_score():
+    if job_already_ran("eod"):
+        print("  -> EOD already ran today, skipping")
+        return
+    mark_job_ran("eod")
     print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running EOD score...")
     try:
         current_price = get_current_price()
