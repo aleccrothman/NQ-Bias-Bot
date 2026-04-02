@@ -30,7 +30,7 @@ TV_CHART_URL = "https://www.tradingview.com/chart/hcbriKzA/"  # Your saved 15m N
 DISCORD_WEBHOOK_NEWS  = os.getenv("DISCORD_WEBHOOK_NEWS",  "")
 DISCORD_WEBHOOK_BIAS  = os.getenv("DISCORD_WEBHOOK_BIAS",  "")
 DISCORD_WEBHOOK_NYO   = os.getenv("DISCORD_WEBHOOK_NYO",   "")
-DISCORD_WEBHOOK_EOD   = os.getenv("DISCORD_WEBHOOK_EOD",   "")
+DISCORD_WEBHOOK_EOD   = os.getenv("DISCORD_WEBHOOK_EOD",   "https://discord.com/api/webhooks/1488613489424470036/l2IZxV6gXzVD5HOY5UyHjQw_te38V-vXIuzwagz6v2gy9WNmPtG4qeynD2mLw9fGhveW")
 
 SYMBOL          = "NQ=F"
 IFVG_RANGE_PTS  = 100
@@ -482,12 +482,14 @@ def fetch_candles_yf(start_utc, end_utc, interval="1m"):
 
 
 def get_vix():
-    """Fetch current VIX level."""
+    """Fetch current VIX level, with fallback for after-hours."""
     try:
         ticker = yf.Ticker("^VIX")
-        df = ticker.history(period="1d", interval="1m")
-        if not df.empty:
-            return round(float(df["Close"].iloc[-1]), 2)
+        # Try today first, then fall back to last 2 days
+        for period in ["1d", "2d", "5d"]:
+            df = ticker.history(period=period, interval="1h")
+            if not df.empty:
+                return round(float(df["Close"].iloc[-1]), 2)
     except Exception:
         pass
     return None
@@ -534,9 +536,21 @@ def get_session_hl(start_utc, end_utc):
     return max(c["high"] for c in candles), min(c["low"] for c in candles), candles[-1]["close"]
 
 def get_current_price():
+    """Get the most recent NQ price, looking back up to 2 hours to handle after-hours gaps."""
     now_utc = datetime.now(UTC)
-    candles = fetch_candles_yf(now_utc - timedelta(minutes=10), now_utc, "1m")
-    return candles[-1]["close"] if candles else None
+    # Try progressively wider windows to find last traded price
+    for minutes in [10, 30, 60, 120]:
+        candles = fetch_candles_yf(now_utc - timedelta(minutes=minutes), now_utc, "1m")
+        if candles:
+            print("  -> Price found looking back " + str(minutes) + " mins: " + str(candles[-1]["close"]))
+            return candles[-1]["close"]
+    # Last resort: use 5m candles over 4 hours
+    candles = fetch_candles_yf(now_utc - timedelta(hours=4), now_utc, "5m")
+    if candles:
+        print("  -> Price found via 5m fallback: " + str(candles[-1]["close"]))
+        return candles[-1]["close"]
+    print("  -> Could not fetch current price")
+    return None
 
 def get_previous_day_hl():
     now_et = datetime.now(ET)
@@ -1761,7 +1775,7 @@ def run_catchup():
                 try:
                     job_fn()
                     ran_any = True
-                    time.sleep(5)
+                    time.sleep(30)  # 30s gap so today_state saves before next job
                 except Exception as e:
                     print("[CATCHUP] Error in " + job_name + ": " + str(e))
         else:
