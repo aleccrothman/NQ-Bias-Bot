@@ -466,27 +466,31 @@ def run_news_job():
 # DATA FETCHING
 
 def fetch_candles_yf(start_utc, end_utc, interval="1m"):
-    """Fetch candles with retry logic for volatile/data-gap periods."""
-    for attempt in range(3):
-        try:
-            ticker = yf.Ticker(SYMBOL)
-            df = ticker.history(start=start_utc, end=end_utc, interval=interval)
-            if not df.empty:
-                df = df.reset_index()
-                candles = []
-                for _, row in df.iterrows():
-                    candles.append({
-                        "open": float(row["Open"]), "high": float(row["High"]),
-                        "low": float(row["Low"]), "close": float(row["Close"]),
-                    })
-                return candles
-            if attempt < 2:
-                print("  -> yFinance empty, retrying in 20s (attempt " + str(attempt+1) + "/3)")
-                time.sleep(20)
-        except Exception as e:
-            print("  -> yFinance error: " + str(e) + " (attempt " + str(attempt+1) + "/3)")
-            if attempt < 2:
-                time.sleep(20)
+    """Fetch candles with retry logic and fallback symbols."""
+    symbols = [SYMBOL, "MNQ=F", "NQ=F"]  # try multiple symbols
+    for sym in symbols:
+        for attempt in range(2):
+            try:
+                ticker = yf.Ticker(sym)
+                df = ticker.history(start=start_utc, end=end_utc, interval=interval)
+                if not df.empty:
+                    if sym != SYMBOL:
+                        print("  -> Using fallback symbol: " + sym)
+                    df = df.reset_index()
+                    candles = []
+                    for _, row in df.iterrows():
+                        candles.append({
+                            "open": float(row["Open"]), "high": float(row["High"]),
+                            "low": float(row["Low"]), "close": float(row["Close"]),
+                        })
+                    return candles
+                if attempt < 1:
+                    print("  -> " + sym + " empty, retrying in 10s")
+                    time.sleep(10)
+            except Exception as e:
+                print("  -> " + sym + " error: " + str(e))
+                if attempt < 1:
+                    time.sleep(10)
     return []
 
 
