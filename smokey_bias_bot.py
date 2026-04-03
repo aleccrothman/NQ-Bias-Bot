@@ -1180,22 +1180,22 @@ def build_discord_morning(current_price, midnight_open, asia_high, asia_low,
     if dow_note:
         description += "\n> *" + dow_note + "*"
 
-    levels_val  = "`Price ` **" + fmt(current_price) + "**\n"
-    levels_val += "`MO    ` **" + fmt(midnight_open) + "**\n"
+    levels_val  = "\U0001f4cd Price  **" + fmt(current_price) + "**\n"
+    levels_val += "\U0001f55b MO      **" + fmt(midnight_open) + "**\n"
     if pdh and pdl:
-        levels_val += "`PDH   ` **" + fmt(pdh) + "**\n"
-        levels_val += "`PDL   ` **" + fmt(pdl) + "**"
+        levels_val += "\U0001f4c5 PDH    **" + fmt(pdh) + "**\n"
+        levels_val += "\U0001f4c5 PDL     **" + fmt(pdl) + "**"
 
-    sessions_val  = "`Asia H` **" + fmt(asia_high) + "**\n"
-    sessions_val += "`Asia L` **" + fmt(asia_low) + "**\n"
-    sessions_val += "`Lon H ` **" + fmt(london_high) + "**\n"
-    sessions_val += "`Lon L ` **" + fmt(london_low) + "**"
+    sessions_val  = "\U0001f30f Asia H  **" + fmt(asia_high) + "**\n"
+    sessions_val += "\U0001f30f Asia L   **" + fmt(asia_low) + "**\n"
+    sessions_val += "\U0001f30d Lon H   **" + fmt(london_high) + "**\n"
+    sessions_val += "\U0001f30d Lon L    **" + fmt(london_low) + "**"
 
     labels = {"midnight_open": "MO    ", "asia_range": "Asia  ", "london_break": "London"}
     signals_val = ""
     for key, (vote, direction, detail) in bias["signals"].items():
         icon = vote_icons.get(vote.strip(), "⚪")
-        signals_val += icon + " `" + labels[key] + "` — " + detail + "\n"
+        signals_val += icon + " **" + labels[key].strip() + "** — " + detail + "\n"
     signals_val = signals_val.strip()
 
     if not ifvgs:
@@ -1209,7 +1209,7 @@ def build_discord_morning(current_price, midnight_open, asia_high, asia_low,
             else:
                 zone_icon = "🟥"
                 side      = "Resistance ↓"
-            ifvg_val += zone_icon + " `" + fmt(z["bottom"]) + " – " + fmt(z["top"]) + "` " + side + "  *(" + str(round(z["dist"])) + "pts away)*\n"
+            ifvg_val += zone_icon + " **" + fmt(z["bottom"]) + " – " + fmt(z["top"]) + "** " + side + "  *(" + str(round(z["dist"])) + "pts away)*\n"
         ifvg_val = ifvg_val.strip()
 
     vix      = get_vix()
@@ -1286,7 +1286,7 @@ def build_discord_nyo(current_price, bias, midnight_open,
             else:
                 zone_icon = "🟥"
                 side      = "Resistance ↓"
-            ifvg_val += zone_icon + " `" + fmt(z["bottom"]) + " – " + fmt(z["top"]) + "` " + side + "  *(" + str(round(z["dist"])) + "pts away)*\n"
+            ifvg_val += zone_icon + " **" + fmt(z["bottom"]) + " – " + fmt(z["top"]) + "** " + side + "  *(" + str(round(z["dist"])) + "pts away)*\n"
         ifvg_val = ifvg_val.strip()
 
     fields = [
@@ -1432,6 +1432,7 @@ def run_nyo_update():
         print("  -> NYO already ran today, skipping")
         return
     mark_job_ran("nyo")
+    load_today_state()  # reload in case of redeploy
     print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running NYO update...")
     try:
         current_price = get_current_price()
@@ -1544,6 +1545,7 @@ def run_eod_score():
         print("  -> EOD already ran today, skipping")
         return
     mark_job_ran("eod")
+    load_today_state()  # reload in case of redeploy
     print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running EOD score...")
     try:
         current_price = get_current_price()
@@ -1566,7 +1568,6 @@ def run_eod_score():
             result_type = "choppy"
 
         winrate_data = record_result_v2(direction, result_type)
-        mark_job_ran("eod")
         # Telegram (HTML)
         tg_msg = build_eod_message_v2(direction, result_type, current_price, mo, price_diff, winrate_data)
         send_telegram_text(tg_msg)
