@@ -466,18 +466,28 @@ def run_news_job():
 # DATA FETCHING
 
 def fetch_candles_yf(start_utc, end_utc, interval="1m"):
-    ticker = yf.Ticker(SYMBOL)
-    df = ticker.history(start=start_utc, end=end_utc, interval=interval)
-    if df.empty:
-        return []
-    df = df.reset_index()
-    candles = []
-    for _, row in df.iterrows():
-        candles.append({
-            "open": float(row["Open"]), "high": float(row["High"]),
-            "low": float(row["Low"]), "close": float(row["Close"]),
-        })
-    return candles
+    """Fetch candles with retry logic for volatile/data-gap periods."""
+    for attempt in range(3):
+        try:
+            ticker = yf.Ticker(SYMBOL)
+            df = ticker.history(start=start_utc, end=end_utc, interval=interval)
+            if not df.empty:
+                df = df.reset_index()
+                candles = []
+                for _, row in df.iterrows():
+                    candles.append({
+                        "open": float(row["Open"]), "high": float(row["High"]),
+                        "low": float(row["Low"]), "close": float(row["Close"]),
+                    })
+                return candles
+            if attempt < 2:
+                print("  -> yFinance empty, retrying in 20s (attempt " + str(attempt+1) + "/3)")
+                time.sleep(20)
+        except Exception as e:
+            print("  -> yFinance error: " + str(e) + " (attempt " + str(attempt+1) + "/3)")
+            if attempt < 2:
+                time.sleep(20)
+    return []
 
 
 def get_vix():
@@ -520,11 +530,11 @@ def get_session_windows():
     }
 
 def get_midnight_open(midnight_utc):
-    # Try progressively wider windows to find the midnight open
-    for interval, hours in [("1m", 0.5), ("1m", 1), ("5m", 1), ("5m", 2)]:
+    """Try progressively wider windows to find the midnight open."""
+    for interval, hours in [("1m", 0.5), ("1m", 1), ("5m", 1), ("5m", 2), ("15m", 3), ("60m", 6)]:
         candles = fetch_candles_yf(midnight_utc, midnight_utc + timedelta(hours=hours), interval)
         if candles:
-            print("  -> Midnight open found using " + interval + " interval")
+            print("  -> Midnight open found using " + interval + " (" + str(hours) + "h window)")
             return candles[0]["open"]
     return None
 
