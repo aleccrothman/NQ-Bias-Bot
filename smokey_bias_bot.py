@@ -1911,7 +1911,7 @@ def main():
     # ─────────────────────────────────────────────────────────────────────────
 
     # Catchup disabled - scheduler loop fires missed jobs automatically
-    # run_catchup()
+    run_catchup()
 
     # Jobs fired by exact UTC time check every 30 seconds
     # Format: (utc_hour, utc_minute, job_key, function, weekday_only)
