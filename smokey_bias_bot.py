@@ -31,6 +31,12 @@ DISCORD_WEBHOOK_BIAS  = os.getenv("DISCORD_WEBHOOK_BIAS",  "")
 DISCORD_WEBHOOK_NYO   = os.getenv("DISCORD_WEBHOOK_NYO",   "")
 DISCORD_WEBHOOK_EOD   = os.getenv("DISCORD_WEBHOOK_EOD",   "https://discord.com/api/webhooks/1488613489424470036/l2IZxV6gXzVD5HOY5UyHjQw_te38V-vXIuzwagz6v2gy9WNmPtG4qeynD2mLw9fGhveW")
 
+# X (TWITTER) CONFIG - uses bot account, NOT @SmokeyNQ
+X_API_KEY             = os.getenv("X_API_KEY", "")
+X_API_SECRET          = os.getenv("X_API_SECRET", "")
+X_ACCESS_TOKEN        = os.getenv("X_ACCESS_TOKEN", "")
+X_ACCESS_TOKEN_SECRET = os.getenv("X_ACCESS_TOKEN_SECRET", "")
+
 SYMBOL          = "NQ=F"
 IFVG_RANGE_PTS  = 100
 IFVG_LOOKBACK_H = 48
@@ -1146,6 +1152,115 @@ def send_discord_raw(content, image_path=None, webhook=None):
         print("  -> Discord send error: " + str(e))
 
 
+def send_x_tweet(text):
+    """Post a tweet via X API OAuth 1.0 using requests (no tweepy needed)."""
+    if not all([X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET]):
+        print("  -> X credentials not set, skipping tweet")
+        return
+    try:
+        import hmac
+        import hashlib
+        import base64
+        import urllib.parse
+        import time as time_mod
+        import uuid
+
+        url = "https://api.twitter.com/2/tweets"
+        method = "POST"
+
+        # OAuth 1.0a params
+        oauth_params = {
+            "oauth_consumer_key":     X_API_KEY,
+            "oauth_nonce":            uuid.uuid4().hex,
+            "oauth_signature_method": "HMAC-SHA1",
+            "oauth_timestamp":        str(int(time_mod.time())),
+            "oauth_token":            X_ACCESS_TOKEN,
+            "oauth_version":          "1.0",
+        }
+
+        # Build signature base string
+        params_str = "&".join(
+            urllib.parse.quote(k, safe="") + "=" + urllib.parse.quote(v, safe="")
+            for k, v in sorted(oauth_params.items())
+        )
+        base_str = (
+            method + "&" +
+            urllib.parse.quote(url, safe="") + "&" +
+            urllib.parse.quote(params_str, safe="")
+        )
+
+        # Sign
+        signing_key = urllib.parse.quote(X_API_SECRET, safe="") + "&" + urllib.parse.quote(X_ACCESS_TOKEN_SECRET, safe="")
+        sig = base64.b64encode(
+            hmac.new(signing_key.encode(), base_str.encode(), hashlib.sha1).digest()
+        ).decode()
+        oauth_params["oauth_signature"] = sig
+
+        # Build Authorization header
+        auth_header = "OAuth " + ", ".join(
+            urllib.parse.quote(k, safe="") + '="' + urllib.parse.quote(v, safe="") + '"'
+            for k, v in sorted(oauth_params.items())
+        )
+
+        resp = requests.post(
+            url,
+            headers={"Authorization": auth_header, "Content-Type": "application/json"},
+            json={"text": text},
+            timeout=15,
+        )
+        if resp.ok:
+            print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Tweet posted successfully.")
+        else:
+            print("  -> Tweet failed: " + resp.text)
+    except Exception as e:
+        print("  -> Tweet error: " + str(e))
+
+
+def build_morning_tweet(bias_overall, grade, current_price, midnight_open,
+                        asia_high, asia_low, london_high, london_low):
+    """Build a clean tweet for the morning bias post. Max 280 chars."""
+    date_str   = datetime.now(ET).strftime("%a %b %d")
+    bias_icon  = "🟢" if "BULLISH" in bias_overall else "🔴" if "BEARISH" in bias_overall else "⚪"
+
+    tweet  = bias_icon + " NQ BIAS — " + bias_overall + " | Grade: " + grade + "\n"
+    tweet += "📅 " + date_str + "\n\n"
+    tweet += "MO:     " + fmt(midnight_open) + "\n"
+    tweet += "Asia:   H " + fmt(asia_high) + "  L " + fmt(asia_low) + "\n"
+    tweet += "London: H " + fmt(london_high) + "  L " + fmt(london_low) + "\n\n"
+    tweet += "Follow @SmokeyNQ for full analysis\n"
+    tweet += "#NQ #Futures #DayTrading #NQfutures"
+
+    # Trim to 280 chars if needed
+    if len(tweet) > 280:
+        tweet = tweet[:277] + "..."
+    return tweet
+
+
+def build_eod_tweet(bias_direction, result_type, current_price, midnight_open, winrate_data):
+    """Build a clean EOD tweet."""
+    date_str    = datetime.now(ET).strftime("%a %b %d")
+    bias_icon   = "🟢" if bias_direction == "bullish" else "🔴" if bias_direction == "bearish" else "⚪"
+    result_icon = "✅" if result_type == "win" else "❌" if result_type == "failed" else "⚪"
+    verdict     = "DELIVERED" if result_type == "win" else "FAILED" if result_type == "failed" else "CHOPPY"
+
+    wins   = winrate_data["wins"]
+    losses = winrate_data["losses"]
+    total  = wins + losses
+    pct    = round(wins / total * 100) if total >= 10 else None
+
+    tweet  = bias_icon + " NQ EOD | " + date_str + "\n"
+    tweet += bias_direction.upper() + " bias → " + result_icon + " " + verdict + "\n\n"
+    tweet += "Close: " + fmt(current_price) + "  MO: " + fmt(midnight_open) + "\n"
+    if pct is not None:
+        tweet += "Win Rate: " + str(pct) + "% (" + str(wins) + "W/" + str(losses) + "L)\n\n"
+    tweet += "Follow @SmokeyNQ\n"
+    tweet += "#NQ #Futures #DayTrading"
+
+    if len(tweet) > 280:
+        tweet = tweet[:277] + "..."
+    return tweet
+
+
 def build_discord_morning(current_price, midnight_open, asia_high, asia_low,
                           london_high, london_low, pdh, pdl, bias, ifvgs):
     """Build a polished Discord embed for the morning bias post."""
@@ -1422,6 +1537,16 @@ def run_morning_bias():
         else:
             send_discord_embed(discord_msg, webhook=DISCORD_WEBHOOK_BIAS)
 
+        # X (Twitter) - bot account post
+        try:
+            tweet = build_morning_tweet(
+                bias["overall"], grade, current_price, midnight_open,
+                asia_high, asia_low, london_high, london_low
+            )
+            send_x_tweet(tweet)
+        except Exception as xe:
+            print("  -> X morning tweet error: " + str(xe))
+
     except Exception as e:
         try:
             send_telegram_text("<b>Morning Bias Error:</b> " + str(e))
@@ -1576,6 +1701,12 @@ def run_eod_score():
         # Discord (embed)
         eod_embed = build_discord_eod(direction, result_type, current_price, mo, price_diff, winrate_data)
         send_discord_embed(eod_embed, webhook=DISCORD_WEBHOOK_EOD)
+        # X (Twitter) - bot account post
+        try:
+            eod_tweet = build_eod_tweet(direction, result_type, current_price, mo, winrate_data)
+            send_x_tweet(eod_tweet)
+        except Exception as xe:
+            print("  -> X EOD tweet error: " + str(xe))
     except Exception as e:
         try:
             send_telegram_text("<b>EOD Score Error:</b> " + str(e))
