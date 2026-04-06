@@ -31,6 +31,7 @@ DISCORD_WEBHOOK_BIAS  = os.getenv("DISCORD_WEBHOOK_BIAS",  "")
 DISCORD_WEBHOOK_NYO   = os.getenv("DISCORD_WEBHOOK_NYO",   "")
 DISCORD_WEBHOOK_EOD   = os.getenv("DISCORD_WEBHOOK_EOD",   "https://discord.com/api/webhooks/1488613489424470036/l2IZxV6gXzVD5HOY5UyHjQw_te38V-vXIuzwagz6v2gy9WNmPtG4qeynD2mLw9fGhveW")
 DISCORD_WEBHOOK_XDRAFTS = os.getenv("DISCORD_WEBHOOK_XDRAFTS", "")
+PIPEDREAM_WEBHOOK = os.getenv("PIPEDREAM_WEBHOOK", "https://eo6plen0msxi0bj.m.pipedream.net")
 
 SYMBOL          = "NQ=F"
 IFVG_RANGE_PTS  = 100
@@ -1371,41 +1372,21 @@ def send_discord(message, image_path=None):
 
 
 def send_tweet(text):
-    """Post a tweet via X API v2."""
-    if not TWEEPY_AVAILABLE:
-        print("  -> tweepy not available, skipping X post")
-        return
-    if not X_API_KEY or not X_ACCESS_TOKEN:
-        print("  -> X credentials not set, skipping tweet")
-        return
-    try:
-        client = tweepy.Client(
-            consumer_key=X_API_KEY,
-            consumer_secret=X_API_SECRET,
-            access_token=X_ACCESS_TOKEN,
-            access_token_secret=X_ACCESS_TOKEN_SECRET,
-        )
-        # X has a 280 char limit
-        if len(text) > 280:
-            text = text[:277] + "..."
-        client.create_tweet(text=text)
-        print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Tweet posted.")
-    except Exception as e:
-        print("  -> Tweet error: " + str(e))
+    """Send tweet to Pipedream (auto-posts to X) and Discord #x-drafts as backup."""
+    if PIPEDREAM_WEBHOOK:
+        try:
+            requests.post(PIPEDREAM_WEBHOOK, json={"text": text}, timeout=10)
+            print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Sent to Pipedream.")
+        except Exception as e:
+            print("  -> Pipedream error: " + str(e))
+    if DISCORD_WEBHOOK_XDRAFTS:
+        try:
+            draft_msg = "**\U0001f426 X Draft \u2014 ready to copy & post:**\n" + "```" + "\n" + text + "\n" + "```"
+            requests.post(DISCORD_WEBHOOK_XDRAFTS, json={"content": draft_msg}, timeout=10)
+            print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] X draft posted to Discord.")
+        except Exception as e:
+            print("  -> X draft error: " + str(e))
 
-
-def send_tweet(text):
-    """Post draft tweet to #x-drafts Discord channel for manual posting."""
-    if not DISCORD_WEBHOOK_XDRAFTS:
-        print("  -> DISCORD_WEBHOOK_XDRAFTS not set, skipping X draft")
-        return
-    try:
-        # Wrap in a code block so it's easy to copy
-        draft_msg = "**\U0001f426 X Draft \u2014 ready to copy & post:**\n" + "```" + "\n" + text + "\n" + "```"
-        requests.post(DISCORD_WEBHOOK_XDRAFTS, json={"content": draft_msg}, timeout=10)
-        print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] X draft posted to Discord.")
-    except Exception as e:
-        print("  -> X draft error: " + str(e))
 
 
 def build_bias_tweet(current_price, midnight_open, asia_high, asia_low,
@@ -1440,8 +1421,11 @@ def build_bias_tweet(current_price, midnight_open, asia_high, asia_low,
     lines.append("Full breakdown + iFVGs + chart \U0001f447")
     lines.append("Follow @SmokeyNQ for daily NQ bias")
     lines.append("")
-    lines.append("#NQ #NasdaqFutures #Futures #DayTrading #SMC #ICT")
-    return "\n".join(lines)
+    lines.append("#NQ #Futures #DayTrading #SMC")
+    tweet = "\n".join(lines)
+    if len(tweet) > 280:
+        tweet = tweet[:277] + "..."
+    return tweet
 
 
 def build_nyo_tweet(current_price, bias, midnight_open, ifvgs):
@@ -1477,8 +1461,11 @@ def build_nyo_tweet(current_price, bias, midnight_open, ifvgs):
     lines.append("Full levels + breakdown \U0001f447")
     lines.append("\u2014 @SmokeyNQ | NQ Bias Daily | Not financial advice")
     lines.append("")
-    lines.append("#NQ #Futures #NYKillZone #ICT #SMC #DayTrading")
-    return "\n".join(lines)
+    lines.append("#NQ #Futures #NYKillZone #SMC")
+    tweet = "\n".join(lines)
+    if len(tweet) > 280:
+        tweet = tweet[:277] + "..."
+    return tweet
 
 
 def build_eod_tweet(bias_direction, result_type, current_price, midnight_open, price_diff, winrate_data):
@@ -1514,8 +1501,11 @@ def build_eod_tweet(bias_direction, result_type, current_price, midnight_open, p
     lines.append("Calling direction daily \u2014 follow to track the streak \U0001f447")
     lines.append("\u2014 @SmokeyNQ | NQ Bias Daily | Not financial advice")
     lines.append("")
-    lines.append("#NQ #Futures #NasdaqFutures #DayTrading #SMC #ICT")
-    return "\n".join(lines)
+    lines.append("#NQ #Futures #DayTrading #SMC")
+    tweet = "\n".join(lines)
+    if len(tweet) > 280:
+        tweet = tweet[:277] + "..."
+    return tweet
 
 
 
