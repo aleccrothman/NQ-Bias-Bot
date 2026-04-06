@@ -10,6 +10,12 @@ import os
 import json
 import time
 import requests
+try:
+    import tweepy
+    TWEEPY_AVAILABLE = True
+except ImportError:
+    TWEEPY_AVAILABLE = False
+    print("[X] tweepy not installed - X posting disabled")
 import yfinance as yf
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -26,16 +32,15 @@ TV_USERNAME  = os.getenv("TV_USERNAME", "")
 TV_PASSWORD  = os.getenv("TV_PASSWORD", "")
 TV_CHART_URL = "https://www.tradingview.com/chart/hcbriKzA/"  # Your saved 15m NQ chart
 
+X_API_KEY            = os.getenv("X_API_KEY", "")
+X_API_SECRET         = os.getenv("X_API_SECRET", "")
+X_ACCESS_TOKEN       = os.getenv("X_ACCESS_TOKEN", "")
+X_ACCESS_TOKEN_SECRET = os.getenv("X_ACCESS_TOKEN_SECRET", "")
+
 DISCORD_WEBHOOK_NEWS  = os.getenv("DISCORD_WEBHOOK_NEWS",  "")
 DISCORD_WEBHOOK_BIAS  = os.getenv("DISCORD_WEBHOOK_BIAS",  "")
 DISCORD_WEBHOOK_NYO   = os.getenv("DISCORD_WEBHOOK_NYO",   "")
 DISCORD_WEBHOOK_EOD   = os.getenv("DISCORD_WEBHOOK_EOD",   "https://discord.com/api/webhooks/1488613489424470036/l2IZxV6gXzVD5HOY5UyHjQw_te38V-vXIuzwagz6v2gy9WNmPtG4qeynD2mLw9fGhveW")
-
-# X (TWITTER) CONFIG - uses bot account, NOT @SmokeyNQ
-X_API_KEY             = os.getenv("X_API_KEY", "")
-X_API_SECRET          = os.getenv("X_API_SECRET", "")
-X_ACCESS_TOKEN        = os.getenv("X_ACCESS_TOKEN", "")
-X_ACCESS_TOKEN_SECRET = os.getenv("X_ACCESS_TOKEN_SECRET", "")
 
 SYMBOL          = "NQ=F"
 IFVG_RANGE_PTS  = 100
@@ -58,6 +63,43 @@ WINRATE_FILE      = Path("/tmp/nq_winrate.json")
 TODAY_STATE_FILE  = Path("/tmp/today_state.json")
 LEVELS_FILE     = Path("/tmp/tv_levels.json")
 JOBS_RAN_FILE   = Path("/tmp/jobs_ran.json")
+
+# ── US BANK HOLIDAYS (NQ futures closed) ─────────────────────────────────────
+US_HOLIDAYS_2026 = {
+    "2026-01-01",  # New Year's Day
+    "2026-01-19",  # MLK Day
+    "2026-02-16",  # Presidents Day
+    "2026-04-03",  # Good Friday
+    "2026-05-25",  # Memorial Day
+    "2026-07-03",  # Independence Day (observed)
+    "2026-09-07",  # Labor Day
+    "2026-11-26",  # Thanksgiving
+    "2026-11-27",  # Black Friday (early close, skip)
+    "2026-12-25",  # Christmas
+}
+
+US_HOLIDAYS_2027 = {
+    "2027-01-01",  # New Year's Day
+    "2027-01-18",  # MLK Day
+    "2027-02-15",  # Presidents Day
+    "2027-03-26",  # Good Friday
+    "2027-05-31",  # Memorial Day
+    "2027-07-05",  # Independence Day (observed)
+    "2027-09-06",  # Labor Day
+    "2027-11-25",  # Thanksgiving
+    "2027-12-24",  # Christmas (observed)
+}
+
+US_HOLIDAYS = US_HOLIDAYS_2026 | US_HOLIDAYS_2027
+
+def is_market_holiday():
+    """Return True if today is a US bank/market holiday."""
+    today = datetime.now(ET).strftime("%Y-%m-%d")
+    if today in US_HOLIDAYS:
+        print("[HOLIDAY] " + today + " is a market holiday - skipping all jobs")
+        return True
+    return False
+
 
 
 
@@ -1152,115 +1194,6 @@ def send_discord_raw(content, image_path=None, webhook=None):
         print("  -> Discord send error: " + str(e))
 
 
-def send_x_tweet(text):
-    """Post a tweet via X API OAuth 1.0 using requests (no tweepy needed)."""
-    if not all([X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET]):
-        print("  -> X credentials not set, skipping tweet")
-        return
-    try:
-        import hmac
-        import hashlib
-        import base64
-        import urllib.parse
-        import time as time_mod
-        import uuid
-
-        url = "https://api.twitter.com/2/tweets"
-        method = "POST"
-
-        # OAuth 1.0a params
-        oauth_params = {
-            "oauth_consumer_key":     X_API_KEY,
-            "oauth_nonce":            uuid.uuid4().hex,
-            "oauth_signature_method": "HMAC-SHA1",
-            "oauth_timestamp":        str(int(time_mod.time())),
-            "oauth_token":            X_ACCESS_TOKEN,
-            "oauth_version":          "1.0",
-        }
-
-        # Build signature base string
-        params_str = "&".join(
-            urllib.parse.quote(k, safe="") + "=" + urllib.parse.quote(v, safe="")
-            for k, v in sorted(oauth_params.items())
-        )
-        base_str = (
-            method + "&" +
-            urllib.parse.quote(url, safe="") + "&" +
-            urllib.parse.quote(params_str, safe="")
-        )
-
-        # Sign
-        signing_key = urllib.parse.quote(X_API_SECRET, safe="") + "&" + urllib.parse.quote(X_ACCESS_TOKEN_SECRET, safe="")
-        sig = base64.b64encode(
-            hmac.new(signing_key.encode(), base_str.encode(), hashlib.sha1).digest()
-        ).decode()
-        oauth_params["oauth_signature"] = sig
-
-        # Build Authorization header
-        auth_header = "OAuth " + ", ".join(
-            urllib.parse.quote(k, safe="") + '="' + urllib.parse.quote(v, safe="") + '"'
-            for k, v in sorted(oauth_params.items())
-        )
-
-        resp = requests.post(
-            url,
-            headers={"Authorization": auth_header, "Content-Type": "application/json"},
-            json={"text": text},
-            timeout=15,
-        )
-        if resp.ok:
-            print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Tweet posted successfully.")
-        else:
-            print("  -> Tweet failed: " + resp.text)
-    except Exception as e:
-        print("  -> Tweet error: " + str(e))
-
-
-def build_morning_tweet(bias_overall, grade, current_price, midnight_open,
-                        asia_high, asia_low, london_high, london_low):
-    """Build a clean tweet for the morning bias post. Max 280 chars."""
-    date_str   = datetime.now(ET).strftime("%a %b %d")
-    bias_icon  = "🟢" if "BULLISH" in bias_overall else "🔴" if "BEARISH" in bias_overall else "⚪"
-
-    tweet  = bias_icon + " NQ BIAS — " + bias_overall + " | Grade: " + grade + "\n"
-    tweet += "📅 " + date_str + "\n\n"
-    tweet += "MO:     " + fmt(midnight_open) + "\n"
-    tweet += "Asia:   H " + fmt(asia_high) + "  L " + fmt(asia_low) + "\n"
-    tweet += "London: H " + fmt(london_high) + "  L " + fmt(london_low) + "\n\n"
-    tweet += "Follow @SmokeyNQ for full analysis\n"
-    tweet += "#NQ #Futures #DayTrading #NQfutures"
-
-    # Trim to 280 chars if needed
-    if len(tweet) > 280:
-        tweet = tweet[:277] + "..."
-    return tweet
-
-
-def build_eod_tweet(bias_direction, result_type, current_price, midnight_open, winrate_data):
-    """Build a clean EOD tweet."""
-    date_str    = datetime.now(ET).strftime("%a %b %d")
-    bias_icon   = "🟢" if bias_direction == "bullish" else "🔴" if bias_direction == "bearish" else "⚪"
-    result_icon = "✅" if result_type == "win" else "❌" if result_type == "failed" else "⚪"
-    verdict     = "DELIVERED" if result_type == "win" else "FAILED" if result_type == "failed" else "CHOPPY"
-
-    wins   = winrate_data["wins"]
-    losses = winrate_data["losses"]
-    total  = wins + losses
-    pct    = round(wins / total * 100) if total >= 10 else None
-
-    tweet  = bias_icon + " NQ EOD | " + date_str + "\n"
-    tweet += bias_direction.upper() + " bias → " + result_icon + " " + verdict + "\n\n"
-    tweet += "Close: " + fmt(current_price) + "  MO: " + fmt(midnight_open) + "\n"
-    if pct is not None:
-        tweet += "Win Rate: " + str(pct) + "% (" + str(wins) + "W/" + str(losses) + "L)\n\n"
-    tweet += "Follow @SmokeyNQ\n"
-    tweet += "#NQ #Futures #DayTrading"
-
-    if len(tweet) > 280:
-        tweet = tweet[:277] + "..."
-    return tweet
-
-
 def build_discord_morning(current_price, midnight_open, asia_high, asia_low,
                           london_high, london_low, pdh, pdl, bias, ifvgs):
     """Build a polished Discord embed for the morning bias post."""
@@ -1444,6 +1377,163 @@ def send_discord(message, image_path=None):
         print("  -> Discord send error: " + str(e))
 
 
+def send_tweet(text):
+    """Post a tweet via X API v2."""
+    if not TWEEPY_AVAILABLE:
+        print("  -> tweepy not available, skipping X post")
+        return
+    if not X_API_KEY or not X_ACCESS_TOKEN:
+        print("  -> X credentials not set, skipping tweet")
+        return
+    try:
+        client = tweepy.Client(
+            consumer_key=X_API_KEY,
+            consumer_secret=X_API_SECRET,
+            access_token=X_ACCESS_TOKEN,
+            access_token_secret=X_ACCESS_TOKEN_SECRET,
+        )
+        # X has a 280 char limit
+        if len(text) > 280:
+            text = text[:277] + "..."
+        client.create_tweet(text=text)
+        print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Tweet posted.")
+    except Exception as e:
+        print("  -> Tweet error: " + str(e))
+
+
+def send_tweet(text):
+    if not TWEEPY_AVAILABLE:
+        print("  -> tweepy not available, skipping X post")
+        return
+    if not X_API_KEY or not X_ACCESS_TOKEN:
+        print("  -> X credentials not set, skipping tweet")
+        return
+    try:
+        client = tweepy.Client(
+            consumer_key=X_API_KEY,
+            consumer_secret=X_API_SECRET,
+            access_token=X_ACCESS_TOKEN,
+            access_token_secret=X_ACCESS_TOKEN_SECRET,
+        )
+        if len(text) > 280:
+            text = text[:277] + "..."
+        client.create_tweet(text=text)
+        print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Tweet posted.")
+    except Exception as e:
+        print("  -> Tweet error: " + str(e))
+
+
+def build_bias_tweet(current_price, midnight_open, asia_high, asia_low,
+                     london_high, london_low, bias, ifvgs, vix):
+    date_str  = datetime.now(ET).strftime("%a %b %d")
+    score_str = ("+" if bias["score"] > 0 else "") + str(bias["score"]) + "/3"
+    grade     = bias.get("grade", "C")
+    if grade == "A" and ifvgs:
+        grade = "A+"
+    bias_icon = "\U0001f7e2" if "BULLISH" in bias["overall"] else "\U0001f534" if "BEARISH" in bias["overall"] else "\u26aa"
+    london_signal = bias["signals"].get("london_break", (" 0", "NEUT", "London inside Asia range"))
+    why_line = london_signal[2]
+
+    lines = []
+    lines.append("\U0001f4ca NQ1! Daily Bias | " + date_str)
+    lines.append("")
+    lines.append(bias_icon + " " + bias["overall"] + " | " + score_str + " | Grade: " + grade)
+    lines.append("Why: " + why_line)
+    if vix and vix >= 25:
+        lines.append("\U0001f321 VIX " + str(vix) + " \u2014 High vol, size down today")
+    elif vix and vix >= 18:
+        lines.append("\U0001f321 VIX " + str(vix) + " \u2014 Elevated vol, watch news")
+    lines.append("")
+    lines.append("\U0001f55b MO: " + fmt(midnight_open, 0))
+    lines.append("\U0001f30f Asia H: " + fmt(asia_high, 0) + "  \u00b7  Asia L: " + fmt(asia_low, 0))
+    lines.append("\U0001f30d Lon H: " + fmt(london_high, 0) + "  \u00b7  Lon L: " + fmt(london_low, 0))
+    if ifvgs:
+        z = ifvgs[0]
+        direction = "buyside above" if z["relation"] == "below" else "sellside below"
+        lines.append("\U0001f3af Watching " + direction + " " + fmt(z["top"] if z["relation"] == "below" else z["bottom"], 0))
+    lines.append("")
+    lines.append("Full breakdown + iFVGs + chart \U0001f447")
+    lines.append("Follow @SmokeyNQ for daily NQ bias")
+    lines.append("")
+    lines.append("#NQ #NasdaqFutures #Futures #DayTrading #SMC #ICT")
+    return "\n".join(lines)
+
+
+def build_nyo_tweet(current_price, bias, midnight_open, ifvgs):
+    date_str  = datetime.now(ET).strftime("%a %b %d")
+    bias_icon = "\U0001f7e2" if "BULLISH" in bias["overall"] else "\U0001f534" if "BEARISH" in bias["overall"] else "\u26aa"
+    direction = bias["direction"]
+    mo        = midnight_open
+    pts       = str(round(abs(current_price - mo)))
+
+    if direction == "bullish":
+        respected = current_price > mo
+        status_icon = "\u2705" if respected else "\u26a0\ufe0f"
+        status_line = "Price holding " + pts + "pts above MO \u2014 bias respected" if respected else "Price below MO \u2014 bias challenged"
+    elif direction == "bearish":
+        respected = current_price < mo
+        status_icon = "\u2705" if respected else "\u26a0\ufe0f"
+        status_line = "Price holding " + pts + "pts below MO \u2014 bias respected" if respected else "Price above MO \u2014 bias challenged"
+    else:
+        status_icon = "\u26aa"
+        status_line = "Neutral \u2014 no directional expectation"
+
+    lines = []
+    lines.append("\U0001f514 NYO Update | NQ " + fmt(current_price, 0) + " | " + date_str)
+    lines.append("")
+    lines.append(bias_icon + " " + bias["overall"] + " bias")
+    lines.append(status_icon + " " + status_line)
+    if ifvgs:
+        z = ifvgs[0]
+        side = "resistance" if z["relation"] == "above" else "support"
+        lines.append("\u26a1 iFVG " + side + " at " + fmt(z["top"] if z["relation"] == "above" else z["bottom"], 0) + " (" + str(round(z["dist"])) + "pts away)")
+    lines.append("")
+    lines.append("\u23f0 NY Kill Zone: 7\u201310 AM ET")
+    lines.append("Full levels + breakdown \U0001f447")
+    lines.append("\u2014 @SmokeyNQ | NQ Bias Daily | Not financial advice")
+    lines.append("")
+    lines.append("#NQ #Futures #NYKillZone #ICT #SMC #DayTrading")
+    return "\n".join(lines)
+
+
+def build_eod_tweet(bias_direction, result_type, current_price, midnight_open, price_diff, winrate_data):
+    date_str = datetime.now(ET).strftime("%a %b %d")
+    wins     = winrate_data["wins"]
+    losses   = winrate_data["losses"]
+    neutrals = winrate_data["neutrals"]
+    streak   = "".join(r["result"] for r in winrate_data["history"][-8:])
+    bias_icon = "\U0001f7e2" if bias_direction == "bullish" else "\U0001f534" if bias_direction == "bearish" else "\u26aa"
+
+    if result_type == "win":
+        result_icon = "\u2705 DELIVERED"
+        move_line   = "NQ moved " + str(round(abs(price_diff))) + "pts in bias direction"
+    elif result_type == "failed":
+        result_icon = "\u274c FAILED"
+        move_line   = "NQ moved against bias by " + str(round(abs(price_diff))) + "pts"
+    else:
+        result_icon = "\u26aa CHOPPY"
+        move_line   = "NQ stayed within 75pts of MO \u2014 no clear delivery"
+
+    streak_visual = " \u00b7 ".join(list(streak)) if streak else "Building..."
+
+    lines = []
+    lines.append("\U0001f4cb EOD Score | " + date_str)
+    lines.append("")
+    lines.append(bias_icon + " " + bias_direction.upper() + " \u2192 " + result_icon)
+    lines.append(move_line)
+    lines.append("")
+    lines.append("\U0001f4c8 Bias Track Record:")
+    lines.append(streak_visual)
+    lines.append(str(wins) + "W  " + str(losses) + "L  " + str(neutrals) + "C")
+    lines.append("")
+    lines.append("Calling direction daily \u2014 follow to track the streak \U0001f447")
+    lines.append("\u2014 @SmokeyNQ | NQ Bias Daily | Not financial advice")
+    lines.append("")
+    lines.append("#NQ #Futures #NasdaqFutures #DayTrading #SMC #ICT")
+    return "\n".join(lines)
+
+
+
 # JOBS
 
 def run_morning_bias():
@@ -1537,15 +1627,10 @@ def run_morning_bias():
         else:
             send_discord_embed(discord_msg, webhook=DISCORD_WEBHOOK_BIAS)
 
-        # X (Twitter) - bot account post
-        try:
-            tweet = build_morning_tweet(
-                bias["overall"], grade, current_price, midnight_open,
-                asia_high, asia_low, london_high, london_low
-            )
-            send_x_tweet(tweet)
-        except Exception as xe:
-            print("  -> X morning tweet error: " + str(xe))
+        # X/Twitter
+        tweet = build_bias_tweet(current_price, midnight_open, asia_high, asia_low,
+                                 london_high, london_low, bias, ifvgs, get_vix())
+        send_tweet(tweet)
 
     except Exception as e:
         try:
@@ -1598,6 +1683,10 @@ def run_nyo_update():
             send_discord_embed(discord_nyo, screenshot, webhook=DISCORD_WEBHOOK_NYO)
         else:
             send_discord_embed(discord_nyo, webhook=DISCORD_WEBHOOK_NYO)
+
+        # X/Twitter
+        nyo_tweet = build_nyo_tweet(current_price, bias, today_state["midnight_open"], nyo_ifvgs)
+        send_tweet(nyo_tweet)
     except Exception as e:
         try:
             send_telegram_text("<b>NYO Update Error:</b> " + str(e))
@@ -1701,12 +1790,10 @@ def run_eod_score():
         # Discord (embed)
         eod_embed = build_discord_eod(direction, result_type, current_price, mo, price_diff, winrate_data)
         send_discord_embed(eod_embed, webhook=DISCORD_WEBHOOK_EOD)
-        # X (Twitter) - bot account post
-        try:
-            eod_tweet = build_eod_tweet(direction, result_type, current_price, mo, winrate_data)
-            send_x_tweet(eod_tweet)
-        except Exception as xe:
-            print("  -> X EOD tweet error: " + str(xe))
+
+        # X/Twitter
+        eod_tweet = build_eod_tweet(direction, result_type, current_price, mo, price_diff, winrate_data)
+        send_tweet(eod_tweet)
     except Exception as e:
         try:
             send_telegram_text("<b>EOD Score Error:</b> " + str(e))
@@ -2053,6 +2140,11 @@ def main():
         now_et  = now_utc.astimezone(ET)
         dow     = now_et.strftime("%A")
         is_weekday = dow in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+
+        # Skip all jobs on market holidays
+        if is_market_holiday():
+            time.sleep(3600)  # sleep 1hr then check again
+            continue
 
         for utc_h, utc_m, job_key, job_fn, weekday_only in JOBS:
             if now_utc.hour == utc_h and now_utc.minute == utc_m:
