@@ -10,12 +10,6 @@ import os
 import json
 import time
 import requests
-try:
-    import tweepy
-    TWEEPY_AVAILABLE = True
-except ImportError:
-    TWEEPY_AVAILABLE = False
-    print("[X] tweepy not installed - X posting disabled")
 import yfinance as yf
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -31,11 +25,6 @@ TELEGRAM_FREE_CHANNEL = os.getenv("TELEGRAM_FREE_CHANNEL", "")  # Optional free/
 TV_USERNAME  = os.getenv("TV_USERNAME", "")
 TV_PASSWORD  = os.getenv("TV_PASSWORD", "")
 TV_CHART_URL = "https://www.tradingview.com/chart/hcbriKzA/"  # Your saved 15m NQ chart
-
-X_API_KEY            = os.getenv("X_API_KEY", "")
-X_API_SECRET         = os.getenv("X_API_SECRET", "")
-X_ACCESS_TOKEN       = os.getenv("X_ACCESS_TOKEN", "")
-X_ACCESS_TOKEN_SECRET = os.getenv("X_ACCESS_TOKEN_SECRET", "")
 
 DISCORD_WEBHOOK_NEWS  = os.getenv("DISCORD_WEBHOOK_NEWS",  "")
 DISCORD_WEBHOOK_BIAS  = os.getenv("DISCORD_WEBHOOK_BIAS",  "")
@@ -1402,25 +1391,17 @@ def send_tweet(text):
 
 
 def send_tweet(text):
-    if not TWEEPY_AVAILABLE:
-        print("  -> tweepy not available, skipping X post")
-        return
-    if not X_API_KEY or not X_ACCESS_TOKEN:
-        print("  -> X credentials not set, skipping tweet")
+    """Post draft tweet to #x-drafts Discord channel for manual posting."""
+    if not DISCORD_WEBHOOK_XDRAFTS:
+        print("  -> DISCORD_WEBHOOK_XDRAFTS not set, skipping X draft")
         return
     try:
-        client = tweepy.Client(
-            consumer_key=X_API_KEY,
-            consumer_secret=X_API_SECRET,
-            access_token=X_ACCESS_TOKEN,
-            access_token_secret=X_ACCESS_TOKEN_SECRET,
-        )
-        if len(text) > 280:
-            text = text[:277] + "..."
-        client.create_tweet(text=text)
-        print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Tweet posted.")
+        # Wrap in a code block so it's easy to copy
+        draft_msg = "**\U0001f426 X Draft \u2014 ready to copy & post:**\n" + "```" + "\n" + text + "\n" + "```"
+        requests.post(DISCORD_WEBHOOK_XDRAFTS, json={"content": draft_msg}, timeout=10)
+        print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] X draft posted to Discord.")
     except Exception as e:
-        print("  -> Tweet error: " + str(e))
+        print("  -> X draft error: " + str(e))
 
 
 def build_bias_tweet(current_price, midnight_open, asia_high, asia_low,
@@ -2110,8 +2091,8 @@ def main():
     print("  20:00 UTC (16:00 ET) - EOD score + win rate")
 
     # ── Uncomment to test any job immediately on startup ─────────────────────
-    run_news_job()
-    run_morning_bias()
+    # run_news_job()
+    # run_morning_bias()
     # run_nyo_update()
     # run_eod_score()
     # ─────────────────────────────────────────────────────────────────────────
