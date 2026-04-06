@@ -2110,8 +2110,8 @@ def main():
     print("  20:00 UTC (16:00 ET) - EOD score + win rate")
 
     # ── Uncomment to test any job immediately on startup ─────────────────────
-    # run_news_job()
-    # run_morning_bias()
+    run_news_job()
+    run_morning_bias()
     # run_nyo_update()
     # run_eod_score()
     # ─────────────────────────────────────────────────────────────────────────
