@@ -1421,7 +1421,7 @@ def build_bias_tweet(current_price, midnight_open, asia_high, asia_low,
         lines.append("\U0001f3af " + direction.capitalize() + " " + fmt(z["top"] if z["relation"] == "below" else z["bottom"], 0))
     lines.append("")
     lines.append("Full analysis \u2192 @SmokeyNQ")
-    lines.append("#NQ #Futures #DayTrading #SMC")
+    lines.append("#NQ #Futures")
     tweet = "\n".join(lines)
     if len(tweet) > 280:
         tweet = tweet[:277] + "..."
@@ -1459,7 +1459,7 @@ def build_nyo_tweet(current_price, bias, midnight_open, ifvgs):
     lines.append("Full levels + breakdown \U0001f447")
     lines.append("\u2014 @SmokeyNQ | NQ Bias Daily | Not financial advice")
     lines.append("")
-    lines.append("#NQ #Futures #NYKillZone #SMC")
+    lines.append("#NQ #Futures")
     tweet = "\n".join(lines)
     if len(tweet) > 280:
         tweet = tweet[:277] + "..."
@@ -1499,7 +1499,7 @@ def build_eod_tweet(bias_direction, result_type, current_price, midnight_open, p
     lines.append("Calling direction daily \u2014 follow to track the streak \U0001f447")
     lines.append("\u2014 @SmokeyNQ | NQ Bias Daily | Not financial advice")
     lines.append("")
-    lines.append("#NQ #Futures #DayTrading #SMC")
+    lines.append("#NQ #Futures")
     tweet = "\n".join(lines)
     if len(tweet) > 280:
         tweet = tweet[:277] + "..."
