@@ -1398,36 +1398,34 @@ def build_bias_tweet(current_price, midnight_open, asia_high, asia_low,
         grade = "A+"
     bias_icon = "\U0001f7e2" if "BULLISH" in bias["overall"] else "\U0001f534" if "BEARISH" in bias["overall"] else "\u26aa"
     london_signal = bias["signals"].get("london_break", (" 0", "NEUT", "London inside Asia range"))
-    why_line = london_signal[2]
+    # Shorten the why line - strip the price in parentheses
+    why_raw = london_signal[2]
+    import re
+    why_line = re.sub(r"\s*\([^)]*\)", "", why_raw).strip()
 
     lines = []
-    lines.append("\U0001f4ca NQ1! Daily Bias | " + date_str)
-    lines.append("")
+    lines.append("\U0001f4ca NQ Bias | " + date_str)
     lines.append(bias_icon + " " + bias["overall"] + " | " + score_str + " | Grade: " + grade)
     lines.append("Why: " + why_line)
     if vix and vix >= 25:
-        lines.append("\U0001f321 VIX " + str(vix) + " \u2014 High vol, size down today")
+        lines.append("\U0001f321 VIX " + str(vix) + " \u2014 High vol, size down")
     elif vix and vix >= 18:
         lines.append("\U0001f321 VIX " + str(vix) + " \u2014 Elevated vol, watch news")
     lines.append("")
-    lines.append("\U0001f55b MO: " + fmt(midnight_open, 0))
-    lines.append("\U0001f30f Asia H: " + fmt(asia_high, 0) + "  \u00b7  Asia L: " + fmt(asia_low, 0))
-    lines.append("\U0001f30d Lon H: " + fmt(london_high, 0) + "  \u00b7  Lon L: " + fmt(london_low, 0))
+    lines.append("\U0001f55b MO: " + fmt(midnight_open, 0) + "  \U0001f4cd Price: " + fmt(current_price, 0))
+    lines.append("\U0001f30f Asia: " + fmt(asia_high, 0) + " / " + fmt(asia_low, 0))
+    lines.append("\U0001f30d London: " + fmt(london_high, 0) + " / " + fmt(london_low, 0))
     if ifvgs:
         z = ifvgs[0]
         direction = "buyside above" if z["relation"] == "below" else "sellside below"
-        lines.append("\U0001f3af Watching " + direction + " " + fmt(z["top"] if z["relation"] == "below" else z["bottom"], 0))
+        lines.append("\U0001f3af " + direction.capitalize() + " " + fmt(z["top"] if z["relation"] == "below" else z["bottom"], 0))
     lines.append("")
-    lines.append("Full breakdown + iFVGs + chart \U0001f447")
-    lines.append("Follow @SmokeyNQ for daily NQ bias")
-    lines.append("")
+    lines.append("Full analysis \u2192 @SmokeyNQ")
     lines.append("#NQ #Futures #DayTrading #SMC")
     tweet = "\n".join(lines)
     if len(tweet) > 280:
         tweet = tweet[:277] + "..."
     return tweet
-
-
 def build_nyo_tweet(current_price, bias, midnight_open, ifvgs):
     date_str  = datetime.now(ET).strftime("%a %b %d")
     bias_icon = "\U0001f7e2" if "BULLISH" in bias["overall"] else "\U0001f534" if "BEARISH" in bias["overall"] else "\u26aa"
