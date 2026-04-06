@@ -20,7 +20,6 @@ import pytz
 TELEGRAM_BOT_TOKEN  = "8757455017:AAFuZgFN5ml3xNCVVE3ww8DyzWThtQrTMos"
 TELEGRAM_CHAT_ID    = "5048230949"
 TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "-1003726448503")
-TELEGRAM_FREE_CHANNEL = os.getenv("TELEGRAM_FREE_CHANNEL", "")  # Optional free/public channel for teasers
 
 TV_USERNAME  = os.getenv("TV_USERNAME", "")
 TV_PASSWORD  = os.getenv("TV_PASSWORD", "")
@@ -31,7 +30,6 @@ DISCORD_WEBHOOK_BIAS  = os.getenv("DISCORD_WEBHOOK_BIAS",  "")
 DISCORD_WEBHOOK_NYO   = os.getenv("DISCORD_WEBHOOK_NYO",   "")
 DISCORD_WEBHOOK_EOD   = os.getenv("DISCORD_WEBHOOK_EOD",   "https://discord.com/api/webhooks/1488613489424470036/l2IZxV6gXzVD5HOY5UyHjQw_te38V-vXIuzwagz6v2gy9WNmPtG4qeynD2mLw9fGhveW")
 DISCORD_WEBHOOK_XDRAFTS = os.getenv("DISCORD_WEBHOOK_XDRAFTS", "")
-PIPEDREAM_WEBHOOK = os.getenv("PIPEDREAM_WEBHOOK", "https://eo6plen0msxi0bj.m.pipedream.net")
 
 SYMBOL          = "NQ=F"
 IFVG_RANGE_PTS  = 100
@@ -719,66 +717,182 @@ def detect_ifvgs(current_price):
 
 # BIAS LOGIC
 
-def compute_bias(midnight_open, current_price, asia_high, asia_low, london_high, london_low, london_close=None):
-    signals, score = {}, 0
+def detect_london_displacement(london_start_utc, london_end_utc, asia_high, asia_low):
+    """
+    Detect liquidity sweep + displacement in London session.
+    Returns dict with sweep type, displacement strength, and target.
+    """
+    try:
+        candles = fetch_candles_yf(london_start_utc, london_end_utc, "15m")
+        if not candles or len(candles) < 3:
+            return {"swept": None, "displaced": False, "detail": "Not enough London data", "target": None}
 
+        # Calculate average body size for displacement threshold
+        bodies = [abs(c["close"] - c["open"]) for c in candles]
+        avg_body = sum(bodies) / len(bodies) if bodies else 1
+        disp_threshold = avg_body * 1.5
+
+        swept_asia_low  = False
+        swept_asia_high = False
+        bullish_disp    = False
+        bearish_disp    = False
+        disp_size       = 0
+
+        # Check each candle for sweep + displacement
+        for i, c in enumerate(candles):
+            # Sweep of Asia Low (wick below)
+            if c["low"] < asia_low and not swept_asia_low:
+                swept_asia_low = True
+            # Sweep of Asia High (wick above)
+            if c["high"] > asia_high and not swept_asia_high:
+                swept_asia_high = True
+
+            # Check for strong displacement candle after sweep
+            body = abs(c["close"] - c["open"])
+            if body >= disp_threshold:
+                if swept_asia_low and c["close"] > c["open"]:
+                    # Bullish displacement after sweeping sellside
+                    bullish_disp = True
+                    disp_size    = round(body)
+                elif swept_asia_high and c["close"] < c["open"]:
+                    # Bearish displacement after sweeping buyside
+                    bearish_disp = True
+                    disp_size    = round(body)
+
+        if swept_asia_low and bullish_disp:
+            return {
+                "swept":      "sellside",
+                "displaced":  True,
+                "direction":  "bullish",
+                "detail":     "London swept Asia Low (" + fmt(asia_low) + ") → strong bullish displacement (" + str(disp_size) + "pts)",
+                "target":     "buyside",
+                "target_detail": "Targeting Asia High / London High",
+            }
+        elif swept_asia_high and bearish_disp:
+            return {
+                "swept":      "buyside",
+                "displaced":  True,
+                "direction":  "bearish",
+                "detail":     "London swept Asia High (" + fmt(asia_high) + ") → strong bearish displacement (" + str(disp_size) + "pts)",
+                "target":     "sellside",
+                "target_detail": "Targeting Asia Low / London Low",
+            }
+        elif swept_asia_low and not bullish_disp:
+            return {
+                "swept":      "sellside",
+                "displaced":  False,
+                "direction":  "neutral",
+                "detail":     "London swept Asia Low (" + fmt(asia_low) + ") but no strong displacement — wait for confirmation",
+                "target":     None,
+                "target_detail": None,
+            }
+        elif swept_asia_high and not bearish_disp:
+            return {
+                "swept":      "buyside",
+                "displaced":  False,
+                "direction":  "neutral",
+                "detail":     "London swept Asia High (" + fmt(asia_high) + ") but no strong displacement — wait for confirmation",
+                "target":     None,
+                "target_detail": None,
+            }
+        else:
+            return {
+                "swept":      None,
+                "displaced":  False,
+                "direction":  "neutral",
+                "detail":     "London inside Asia range — no liquidity sweep",
+                "target":     None,
+                "target_detail": None,
+            }
+    except Exception as e:
+        print("  -> London displacement error: " + str(e))
+        return {"swept": None, "displaced": False, "direction": "neutral", "detail": "London analysis unavailable", "target": None, "target_detail": None}
+
+
+def compute_bias(midnight_open, current_price, asia_high, asia_low,
+                 london_high, london_low, london_close=None,
+                 london_sweep=None):
+    """
+    ICT-based bias using liquidity sweep + displacement logic.
+    london_sweep = result from detect_london_displacement()
+    """
+    signals = {}
+    score   = 0
+
+    # ── Signal 1: Midnight Open ───────────────────────────────────────────────
     if current_price > midnight_open:
-        signals["midnight_open"] = ("+1", "BULL", "Price " + fmt(current_price) + " > MO " + fmt(midnight_open))
+        signals["midnight_open"] = ("+1", "BULL", "Price " + fmt(current_price) + " > MO " + fmt(midnight_open) + " — above midnight open")
         score += 1
     elif current_price < midnight_open:
-        signals["midnight_open"] = ("-1", "BEAR", "Price " + fmt(current_price) + " < MO " + fmt(midnight_open))
+        signals["midnight_open"] = ("-1", "BEAR", "Price " + fmt(current_price) + " < MO " + fmt(midnight_open) + " — below midnight open")
         score -= 1
     else:
         signals["midnight_open"] = (" 0", "NEUT", "Price at MO " + fmt(midnight_open))
 
-    if current_price > asia_high:
-        signals["asia_range"] = ("+1", "BULL", "Above Asia High " + fmt(asia_high))
-        score += 1
-    elif current_price < asia_low:
-        signals["asia_range"] = ("-1", "BEAR", "Below Asia Low " + fmt(asia_low))
-        score -= 1
+    # ── Signal 2: London Sweep + Displacement (primary signal) ───────────────
+    if london_sweep and london_sweep.get("displaced"):
+        if london_sweep["direction"] == "bullish":
+            signals["london_sweep"] = ("+2", "BULL", london_sweep["detail"])
+            score += 2  # double weight — this is the main signal
+        elif london_sweep["direction"] == "bearish":
+            signals["london_sweep"] = ("-2", "BEAR", london_sweep["detail"])
+            score -= 2
+    elif london_sweep and london_sweep.get("swept") and not london_sweep.get("displaced"):
+        # Sweep with no displacement = wait, neutral
+        signals["london_sweep"] = (" 0", "NEUT", london_sweep["detail"])
     else:
-        signals["asia_range"] = (" 0", "NEUT", "Inside Asia Range")
-
-    if london_high > asia_high:
-        if london_close is not None and london_close < asia_high:
-            signals["london_break"] = ("-1", "BEAR", "London swept Asia High (" + fmt(london_high) + ") then closed back below - bearish trap")
+        # No sweep = check basic London range break as weak signal
+        if london_high > asia_high:
+            signals["london_sweep"] = ("+1", "BULL", "London broke above Asia High (" + fmt(london_high) + ") — no sweep/displacement")
+            score += 1
+        elif london_low < asia_low:
+            signals["london_sweep"] = ("-1", "BEAR", "London broke below Asia Low (" + fmt(london_low) + ") — no sweep/displacement")
             score -= 1
         else:
-            signals["london_break"] = ("+1", "BULL", "London broke above Asia High (" + fmt(london_high) + ")")
-            score += 1
-    elif london_low < asia_low:
-        if london_close is not None and london_close > asia_low:
-            signals["london_break"] = ("+1", "BULL", "London swept Asia Low (" + fmt(london_low) + ") then closed back above - bullish reversal")
-            score += 1
-        else:
-            signals["london_break"] = ("-1", "BEAR", "London broke below Asia Low (" + fmt(london_low) + ")")
-            score -= 1
-    else:
-        signals["london_break"] = (" 0", "NEUT", "London inside Asia range")
+            signals["london_sweep"] = (" 0", "NEUT", "London inside Asia range — no directional signal")
 
-    if score >= 2:
+    # ── Determine overall bias ────────────────────────────────────────────────
+    if score >= 3:
         overall, direction = "BULLISH", "bullish"
-    elif score <= -2:
+        grade = "A"
+    elif score == 2:
+        overall, direction = "BULLISH", "bullish"
+        grade = "B"
+    elif score <= -3:
         overall, direction = "BEARISH", "bearish"
+        grade = "A"
+    elif score == -2:
+        overall, direction = "BEARISH", "bearish"
+        grade = "B"
     elif score == 1:
         overall, direction = "LEANING BULLISH", "bullish"
+        grade = "C"
     elif score == -1:
         overall, direction = "LEANING BEARISH", "bearish"
-    else:
-        overall, direction = "NEUTRAL / MIXED", "neutral"
-
-    abs_score = abs(score)
-    if abs_score == 3:
-        grade = "A"
-    elif abs_score == 2:
-        grade = "B"
-    elif abs_score == 1:
         grade = "C"
     else:
+        overall, direction = "NEUTRAL / NO TRADE", "neutral"
         grade = "D"
 
-    return {"overall": overall, "score": score, "signals": signals, "direction": direction, "grade": grade}
+    # ── Target level ─────────────────────────────────────────────────────────
+    if london_sweep and london_sweep.get("target_detail"):
+        target_detail = london_sweep["target_detail"]
+    elif direction == "bullish":
+        target_detail = "Targeting buyside above — Asia High / London High"
+    elif direction == "bearish":
+        target_detail = "Targeting sellside below — Asia Low / London Low"
+    else:
+        target_detail = "No clear target — wait for NY confirmation"
+
+    return {
+        "overall":       overall,
+        "score":         score,
+        "signals":       signals,
+        "direction":     direction,
+        "grade":         grade,
+        "target_detail": target_detail,
+        "london_sweep":  london_sweep,
+    }
 
 
 # MESSAGE BUILDERS
@@ -819,11 +933,14 @@ def build_morning_caption(current_price, midnight_open, asia_high, asia_low,
     msg += "🌍 London:  H <b>" + fmt(london_high) + "</b>  L <b>" + fmt(london_low) + "</b>\n"
     msg += "--------------------\n"
     msg += "<b>Signal Breakdown:</b>\n"
-    labels = {"midnight_open": "MO     ", "asia_range": "Asia   ", "london_break": "London "}
+    labels = {"midnight_open": "MO          ", "london_sweep": "London Sweep"}
     for key, (vote, direction, detail) in bias["signals"].items():
         icon = vote_icons.get(vote.strip(), "⚪")
         tg_detail = detail.replace(">", "&gt;").replace("<", "&lt;")
         msg += icon + " " + labels[key] + " <i>" + tg_detail + "</i>\n"
+    # Target
+    if bias.get("target_detail"):
+        msg += "\U0001f3af <b>Target:</b> <i>" + bias["target_detail"] + "</i>\n"
     msg += "--------------------\n"
     msg += "<b>1H iFVGs +/-" + str(IFVG_RANGE_PTS) + "pts:</b>\n"
     if not ifvgs:
@@ -1108,6 +1225,22 @@ def send_telegram_text(message):
     print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Text sent.")
 
 
+def send_telegram_text(message):
+    url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendMessage"
+    for chat_id in [TELEGRAM_CHAT_ID, TELEGRAM_CHANNEL_ID]:
+        if not chat_id:
+            continue
+        try:
+            requests.post(url, json={
+                "chat_id": chat_id,
+                "text": message,
+                "parse_mode": "HTML",
+            }, timeout=10).raise_for_status()
+        except Exception as e:
+            print("  -> Text send error: " + str(e))
+    print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Text sent.")
+
+
 def send_teaser(bias_overall, grade, date_str):
     """Send a short teaser to the free channel to create FOMO."""
     if not TELEGRAM_FREE_CHANNEL:
@@ -1232,7 +1365,7 @@ def build_discord_morning(current_price, midnight_open, asia_high, asia_low,
     sessions_val += "\U0001f30d Lon H   **" + fmt(london_high) + "**\n"
     sessions_val += "\U0001f30d Lon L    **" + fmt(london_low) + "**"
 
-    labels = {"midnight_open": "MO    ", "asia_range": "Asia  ", "london_break": "London"}
+    labels = {"midnight_open": "MO          ", "london_sweep": "London Sweep"}
     signals_val = ""
     for key, (vote, direction, detail) in bias["signals"].items():
         icon = vote_icons.get(vote.strip(), "⚪")
@@ -1270,6 +1403,8 @@ def build_discord_morning(current_price, midnight_open, asia_high, asia_low,
             {"name": "🌅  Sessions",    "value": sessions_val, "inline": True},
             {"name": "\u200b", "value": "\u200b", "inline": False},
             {"name": "🔍  Signal Breakdown", "value": signals_val, "inline": False},
+            {"name": "\u200b", "value": "\u200b", "inline": False},
+            {"name": "🎯  Target", "value": bias.get("target_detail", "No clear target"), "inline": False},
             {"name": "\u200b", "value": "\u200b", "inline": False},
             {"name": "⚡  1H iFVGs ±" + str(IFVG_RANGE_PTS) + "pts", "value": ifvg_val, "inline": False},
             {"name": "\u200b", "value": "\u200b", "inline": False},
@@ -1372,13 +1507,7 @@ def send_discord(message, image_path=None):
 
 
 def send_tweet(text):
-    """Send tweet to Pipedream (auto-posts to X) and Discord #x-drafts as backup."""
-    if PIPEDREAM_WEBHOOK:
-        try:
-            requests.post(PIPEDREAM_WEBHOOK, json={"text": text}, timeout=10)
-            print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Sent to Pipedream.")
-        except Exception as e:
-            print("  -> Pipedream error: " + str(e))
+    """Send draft tweet to #x-drafts Discord channel for easy copy-paste posting."""
     if DISCORD_WEBHOOK_XDRAFTS:
         try:
             draft_msg = "**\U0001f426 X Draft \u2014 ready to copy & post:**\n" + "```" + "\n" + text + "\n" + "```"
@@ -1501,13 +1630,7 @@ def build_eod_tweet(bias_direction, result_type, current_price, midnight_open, p
     return tweet
 
 def send_tweet(text):
-    """Send tweet to Pipedream (auto-posts to X) and Discord #x-drafts as backup."""
-    if PIPEDREAM_WEBHOOK:
-        try:
-            requests.post(PIPEDREAM_WEBHOOK, json={"text": text}, timeout=10)
-            print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Sent to Pipedream.")
-        except Exception as e:
-            print("  -> Pipedream error: " + str(e))
+    """Send draft tweet to #x-drafts Discord channel for easy copy-paste posting."""
     if DISCORD_WEBHOOK_XDRAFTS:
         try:
             draft_msg = "**\U0001f426 X Draft \u2014 ready to copy & post:**\n" + "```" + "\n" + text + "\n" + "```"
@@ -1689,7 +1812,11 @@ def run_morning_bias():
             london_high = asia_high
             london_low  = asia_low
 
-        bias = compute_bias(midnight_open, current_price, asia_high, asia_low, london_high, london_low, london_close)
+        london_sweep = detect_london_displacement(
+            windows["london_start_utc"], windows["london_end_utc"], asia_high, asia_low)
+        print("  -> London sweep: " + str(london_sweep.get("detail", "N/A")))
+        bias = compute_bias(midnight_open, current_price, asia_high, asia_low,
+                            london_high, london_low, london_close, london_sweep=london_sweep)
         ifvgs = detect_ifvgs(current_price)
         disp  = detect_15m_displacement(midnight_open)
 
@@ -1712,7 +1839,6 @@ def run_morning_bias():
         grade = bias.get("grade", "C")
         if grade == "A" and ifvgs:
             grade = "A+"
-        send_teaser(bias["overall"], grade, datetime.now(ET).strftime("%a %b %d"))
         if screenshot and screenshot.exists():
             send_telegram_photo(screenshot, caption)
         else:
