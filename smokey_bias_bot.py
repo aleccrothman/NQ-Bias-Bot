@@ -1398,18 +1398,19 @@ def build_bias_tweet(current_price, midnight_open, asia_high, asia_low,
         grade = "A+"
     bias_icon = "\U0001f7e2" if "BULLISH" in bias["overall"] else "\U0001f534" if "BEARISH" in bias["overall"] else "\u26aa"
     london_signal = bias["signals"].get("london_break", (" 0", "NEUT", "London inside Asia range"))
-    # Shorten the why line - strip the price in parentheses
-    why_raw = london_signal[2]
     import re
-    why_line = re.sub(r"\s*\([^)]*\)", "", why_raw).strip()
+    why_line = re.sub(r"\s*\([^)]*\)", "", london_signal[2]).strip()
 
     lines = []
     lines.append("\U0001f4ca NQ Bias | " + date_str)
+    lines.append("")
     lines.append(bias_icon + " " + bias["overall"] + " | " + score_str + " | Grade: " + grade)
     lines.append("Why: " + why_line)
     if vix and vix >= 25:
+        lines.append("")
         lines.append("\U0001f321 VIX " + str(vix) + " \u2014 High vol, size down")
     elif vix and vix >= 18:
+        lines.append("")
         lines.append("\U0001f321 VIX " + str(vix) + " \u2014 Elevated vol, watch news")
     lines.append("")
     lines.append("\U0001f55b MO: " + fmt(midnight_open, 0) + "  \U0001f4cd Price: " + fmt(current_price, 0))
@@ -1417,11 +1418,11 @@ def build_bias_tweet(current_price, midnight_open, asia_high, asia_low,
     lines.append("\U0001f30d London: " + fmt(london_high, 0) + " / " + fmt(london_low, 0))
     if ifvgs:
         z = ifvgs[0]
-        direction = "buyside above" if z["relation"] == "below" else "sellside below"
-        lines.append("\U0001f3af " + direction.capitalize() + " " + fmt(z["top"] if z["relation"] == "below" else z["bottom"], 0))
+        direction = "Buyside above" if z["relation"] == "below" else "Sellside below"
+        lines.append("\U0001f3af " + direction + " " + fmt(z["top"] if z["relation"] == "below" else z["bottom"], 0))
     lines.append("")
     lines.append("Full analysis \u2192 @SmokeyNQ")
-    lines.append("#NQ #Futures")
+    lines.append("#NQ")
     tweet = "\n".join(lines)
     if len(tweet) > 280:
         tweet = tweet[:277] + "..."
@@ -1456,16 +1457,141 @@ def build_nyo_tweet(current_price, bias, midnight_open, ifvgs):
         lines.append("\u26a1 iFVG " + side + " at " + fmt(z["top"] if z["relation"] == "above" else z["bottom"], 0) + " (" + str(round(z["dist"])) + "pts away)")
     lines.append("")
     lines.append("\u23f0 NY Kill Zone: 7\u201310 AM ET")
-    lines.append("Full levels + breakdown \U0001f447")
-    lines.append("\u2014 @SmokeyNQ | NQ Bias Daily | Not financial advice")
+    lines.append("Full levels \u2192 @SmokeyNQ")
+    lines.append("#NQ")
+    tweet = "\n".join(lines)
+    if len(tweet) > 280:
+        tweet = tweet[:277] + "..."
+    return tweet
+def build_eod_tweet(bias_direction, result_type, current_price, midnight_open, price_diff, winrate_data):
+    date_str = datetime.now(ET).strftime("%a %b %d")
+    wins     = winrate_data["wins"]
+    losses   = winrate_data["losses"]
+    neutrals = winrate_data["neutrals"]
+    streak   = "".join(r["result"] for r in winrate_data["history"][-8:])
+    bias_icon = "\U0001f7e2" if bias_direction == "bullish" else "\U0001f534" if bias_direction == "bearish" else "\u26aa"
+
+    if result_type == "win":
+        result_icon = "\u2705 DELIVERED"
+        move_line   = "NQ moved " + str(round(abs(price_diff))) + "pts in bias direction"
+    elif result_type == "failed":
+        result_icon = "\u274c FAILED"
+        move_line   = "NQ moved against bias by " + str(round(abs(price_diff))) + "pts"
+    else:
+        result_icon = "\u26aa CHOPPY"
+        move_line   = "NQ stayed within 75pts of MO"
+
+    streak_visual = " \u00b7 ".join(list(streak)) if streak else "Building..."
+
+    lines = []
+    lines.append("\U0001f4cb EOD Score | " + date_str)
     lines.append("")
-    lines.append("#NQ #Futures")
+    lines.append(bias_icon + " " + bias_direction.upper() + " \u2192 " + result_icon)
+    lines.append(move_line)
+    lines.append("")
+    lines.append("\U0001f4c8 Track Record:")
+    lines.append(streak_visual)
+    lines.append(str(wins) + "W  " + str(losses) + "L  " + str(neutrals) + "C")
+    lines.append("")
+    lines.append("Follow the streak \u2192 @SmokeyNQ")
+    lines.append("#NQ")
     tweet = "\n".join(lines)
     if len(tweet) > 280:
         tweet = tweet[:277] + "..."
     return tweet
 
+def send_tweet(text):
+    """Send tweet to Pipedream (auto-posts to X) and Discord #x-drafts as backup."""
+    if PIPEDREAM_WEBHOOK:
+        try:
+            requests.post(PIPEDREAM_WEBHOOK, json={"text": text}, timeout=10)
+            print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Sent to Pipedream.")
+        except Exception as e:
+            print("  -> Pipedream error: " + str(e))
+    if DISCORD_WEBHOOK_XDRAFTS:
+        try:
+            draft_msg = "**\U0001f426 X Draft \u2014 ready to copy & post:**\n" + "```" + "\n" + text + "\n" + "```"
+            requests.post(DISCORD_WEBHOOK_XDRAFTS, json={"content": draft_msg}, timeout=10)
+            print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] X draft posted to Discord.")
+        except Exception as e:
+            print("  -> X draft error: " + str(e))
 
+
+
+def build_bias_tweet(current_price, midnight_open, asia_high, asia_low,
+                     london_high, london_low, bias, ifvgs, vix):
+    date_str  = datetime.now(ET).strftime("%a %b %d")
+    score_str = ("+" if bias["score"] > 0 else "") + str(bias["score"]) + "/3"
+    grade     = bias.get("grade", "C")
+    if grade == "A" and ifvgs:
+        grade = "A+"
+    bias_icon = "\U0001f7e2" if "BULLISH" in bias["overall"] else "\U0001f534" if "BEARISH" in bias["overall"] else "\u26aa"
+    london_signal = bias["signals"].get("london_break", (" 0", "NEUT", "London inside Asia range"))
+    import re
+    why_line = re.sub(r"\s*\([^)]*\)", "", london_signal[2]).strip()
+
+    lines = []
+    lines.append("\U0001f4ca NQ Bias | " + date_str)
+    lines.append("")
+    lines.append(bias_icon + " " + bias["overall"] + " | " + score_str + " | Grade: " + grade)
+    lines.append("Why: " + why_line)
+    if vix and vix >= 25:
+        lines.append("")
+        lines.append("\U0001f321 VIX " + str(vix) + " \u2014 High vol, size down")
+    elif vix and vix >= 18:
+        lines.append("")
+        lines.append("\U0001f321 VIX " + str(vix) + " \u2014 Elevated vol, watch news")
+    lines.append("")
+    lines.append("\U0001f55b MO: " + fmt(midnight_open, 0) + "  \U0001f4cd Price: " + fmt(current_price, 0))
+    lines.append("\U0001f30f Asia: " + fmt(asia_high, 0) + " / " + fmt(asia_low, 0))
+    lines.append("\U0001f30d London: " + fmt(london_high, 0) + " / " + fmt(london_low, 0))
+    if ifvgs:
+        z = ifvgs[0]
+        direction = "Buyside above" if z["relation"] == "below" else "Sellside below"
+        lines.append("\U0001f3af " + direction + " " + fmt(z["top"] if z["relation"] == "below" else z["bottom"], 0))
+    lines.append("")
+    lines.append("Full analysis \u2192 @SmokeyNQ")
+    lines.append("#NQ")
+    tweet = "\n".join(lines)
+    if len(tweet) > 280:
+        tweet = tweet[:277] + "..."
+    return tweet
+def build_nyo_tweet(current_price, bias, midnight_open, ifvgs):
+    date_str  = datetime.now(ET).strftime("%a %b %d")
+    bias_icon = "\U0001f7e2" if "BULLISH" in bias["overall"] else "\U0001f534" if "BEARISH" in bias["overall"] else "\u26aa"
+    direction = bias["direction"]
+    mo        = midnight_open
+    pts       = str(round(abs(current_price - mo)))
+
+    if direction == "bullish":
+        respected = current_price > mo
+        status_icon = "\u2705" if respected else "\u26a0\ufe0f"
+        status_line = "Price holding " + pts + "pts above MO \u2014 bias respected" if respected else "Price below MO \u2014 bias challenged"
+    elif direction == "bearish":
+        respected = current_price < mo
+        status_icon = "\u2705" if respected else "\u26a0\ufe0f"
+        status_line = "Price holding " + pts + "pts below MO \u2014 bias respected" if respected else "Price above MO \u2014 bias challenged"
+    else:
+        status_icon = "\u26aa"
+        status_line = "Neutral \u2014 no directional expectation"
+
+    lines = []
+    lines.append("\U0001f514 NYO Update | NQ " + fmt(current_price, 0) + " | " + date_str)
+    lines.append("")
+    lines.append(bias_icon + " " + bias["overall"] + " bias")
+    lines.append(status_icon + " " + status_line)
+    if ifvgs:
+        z = ifvgs[0]
+        side = "resistance" if z["relation"] == "above" else "support"
+        lines.append("\u26a1 iFVG " + side + " at " + fmt(z["top"] if z["relation"] == "above" else z["bottom"], 0) + " (" + str(round(z["dist"])) + "pts away)")
+    lines.append("")
+    lines.append("\u23f0 NY Kill Zone: 7\u201310 AM ET")
+    lines.append("Full levels \u2192 @SmokeyNQ")
+    lines.append("#NQ")
+    tweet = "\n".join(lines)
+    if len(tweet) > 280:
+        tweet = tweet[:277] + "..."
+    return tweet
 def build_eod_tweet(bias_direction, result_type, current_price, midnight_open, price_diff, winrate_data):
     date_str = datetime.now(ET).strftime("%a %b %d")
     wins     = winrate_data["wins"]
@@ -2084,7 +2210,7 @@ def main():
 
     # ── Uncomment to test any job immediately on startup ─────────────────────
     # run_news_job()
-    run_morning_bias()
+    # run_morning_bias()
     # run_nyo_update()
     # run_eod_score()
     # ─────────────────────────────────────────────────────────────────────────
