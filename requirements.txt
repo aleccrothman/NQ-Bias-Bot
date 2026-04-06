@@ -5,3 +5,4 @@ playwright
 pillow
 beautifulsoup4
 schedule
+tweepy
