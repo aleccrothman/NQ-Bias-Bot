@@ -723,7 +723,7 @@ def detect_london_displacement(london_start_utc, london_end_utc, asia_high, asia
     Returns dict with sweep type, displacement strength, and target.
     """
     try:
-        candles = fetch_candles_yf(london_start_utc, london_end_utc, "15m")
+        candles = fetch_candles_yf(london_start_utc, london_end_utc, "60m")
         if not candles or len(candles) < 3:
             return {"swept": None, "displaced": False, "detail": "Not enough London data", "target": None}
 
