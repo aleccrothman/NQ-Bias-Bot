@@ -48,10 +48,10 @@ ET  = pytz.timezone("America/New_York")
 UTC = pytz.utc
 
 SCREENSHOT_PATH = Path("/tmp/nq_chart.png")
-WINRATE_FILE      = Path("/tmp/nq_winrate.json")
-TODAY_STATE_FILE  = Path("/tmp/today_state.json")
-LEVELS_FILE     = Path("/tmp/tv_levels.json")
-JOBS_RAN_FILE   = Path("/tmp/jobs_ran.json")
+WINRATE_FILE      = Path("/data/nq_winrate.json")
+TODAY_STATE_FILE  = Path("/data/today_state.json")
+LEVELS_FILE     = Path("/data/tv_levels.json")
+JOBS_RAN_FILE   = Path("/data/jobs_ran.json")
 
 # ── US BANK HOLIDAYS (NQ futures closed) ─────────────────────────────────────
 US_HOLIDAYS_2026 = {
@@ -2328,6 +2328,9 @@ def main():
     # Load today's state from disk in case of restart
     load_today_state()
 
+    # Ensure persistent data directory exists
+    import os as _os
+    _os.makedirs("/data", exist_ok=True)
     print("Smokey Bias Bot - scheduled daily:")
     print("  11:00 UTC (07:00 ET) - Macro news")
     print("  12:00 UTC (08:00 ET) - Morning bias + chart")
