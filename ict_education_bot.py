@@ -10,7 +10,7 @@ import redis
 DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
 STRATEGY_WEBHOOK_URL = os.environ["STRATEGY_WEBHOOK_URL"]  # #smoke-signals webhook
 POST_DAYS = {0, 3}  # Monday=0, Thursday=3
-POST_TIME = time(9, 0)  # 9:00 AM ET
+POST_TIME = time(18, 0)  # 6:00 PM ET
 TIMEZONE = pytz.timezone("America/New_York")
 
 # ── Redis ─────────────────────────────────────────────────────────────────────
