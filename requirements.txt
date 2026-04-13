@@ -6,3 +6,4 @@ pillow
 beautifulsoup4
 schedule
 tweepy
+redis==5.0.1
