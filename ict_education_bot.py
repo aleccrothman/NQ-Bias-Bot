@@ -2,18 +2,21 @@ import os
 import json
 import random
 import asyncio
-import discord
-from discord.ext import tasks
 from datetime import datetime, time
 import pytz
+import redis
 
 # ── Config ────────────────────────────────────────────────────────────────────
 DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
-STRATEGY_WEBHOOK_URL = os.environ["STRATEGY_WEBHOOK_URL"]  # #strategy channel webhook
+STRATEGY_WEBHOOK_URL = os.environ["STRATEGY_WEBHOOK_URL"]  # #smoke-signals webhook
 POST_DAYS = {0, 3}  # Monday=0, Thursday=3
 POST_TIME = time(9, 0)  # 9:00 AM ET
 TIMEZONE = pytz.timezone("America/New_York")
-STATE_FILE = "/data/ict_bot_state.json"  # Railway volume
+
+# ── Redis ─────────────────────────────────────────────────────────────────────
+REDIS_URL = os.environ["REDIS_URL"]  # Auto-set by Railway Redis plugin
+r = redis.from_url(REDIS_URL, decode_responses=True)
+REDIS_KEY = "smokesignals:state"
 
 # ── ICT Concepts Library ───────────────────────────────────────────────────────
 ICT_CONCEPTS = [
@@ -309,18 +312,15 @@ ICT_CONCEPTS = [
     },
 ]
 
-# ── State Management ──────────────────────────────────────────────────────────
+# ── State Management (Redis) ──────────────────────────────────────────────────
 def load_state():
-    try:
-        with open(STATE_FILE, "r") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {"used_indices": [], "last_post_date": None}
+    data = r.get(REDIS_KEY)
+    if data:
+        return json.loads(data)
+    return {"used_indices": [], "last_post_date": None}
 
 def save_state(state):
-    os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f)
+    r.set(REDIS_KEY, json.dumps(state))
 
 def get_next_concept():
     state = load_state()
