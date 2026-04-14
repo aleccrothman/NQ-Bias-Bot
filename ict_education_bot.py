@@ -2,6 +2,9 @@ import os
 import json
 import random
 import asyncio
+import aiohttp
+import discord
+from discord.ext import commands
 from datetime import datetime, time
 import pytz
 import redis
@@ -14,7 +17,7 @@ POST_TIME = time(18, 0)  # 6:00 PM ET
 TIMEZONE = pytz.timezone("America/New_York")
 
 # ── Redis ─────────────────────────────────────────────────────────────────────
-REDIS_URL = os.environ["REDIS_URL"]  # Auto-set by Railway Redis plugin
+REDIS_URL = os.environ["REDIS_URL"]
 r = redis.from_url(REDIS_URL, decode_responses=True)
 REDIS_KEY = "smokesignals:state"
 
@@ -325,69 +328,38 @@ def save_state(state):
 def get_next_concept():
     state = load_state()
     used = state.get("used_indices", [])
-
-    # Reset cycle if all concepts used
     if len(used) >= len(ICT_CONCEPTS):
         used = []
-
     available = [i for i in range(len(ICT_CONCEPTS)) if i not in used]
     idx = random.choice(available)
     used.append(idx)
-
     state["used_indices"] = used
     state["last_post_date"] = datetime.now(TIMEZONE).isoformat()
     save_state(state)
-
     return ICT_CONCEPTS[idx], len(used), len(ICT_CONCEPTS)
 
 # ── Discord Webhook Post ───────────────────────────────────────────────────────
 async def post_ict_concept():
-    import aiohttp
-
     concept, count, total = get_next_concept()
     now = datetime.now(TIMEZONE)
     date_str = now.strftime("%A, %B %d %Y")
 
     embed = {
-        "title": f"{concept['title']}",
+        "title": concept["title"],
         "description": f"**{concept['category']}  ·  {concept['type']}**",
         "color": concept["color"],
         "fields": [
-            {
-                "name": "📖 Definition",
-                "value": concept["definition"],
-                "inline": False,
-            },
-            {
-                "name": "⚙️ How To Use It",
-                "value": concept["how_to_use"],
-                "inline": False,
-            },
-            {
-                "name": "🖥️ NQ Application",
-                "value": concept["nq_tip"],
-                "inline": False,
-            },
-            {
-                "name": "⏱️ Best Timeframes",
-                "value": concept["timeframes"],
-                "inline": True,
-            },
-            {
-                "name": "📅 Posted",
-                "value": date_str,
-                "inline": True,
-            },
+            {"name": "📖 Definition", "value": concept["definition"], "inline": False},
+            {"name": "⚙️ How To Use It", "value": concept["how_to_use"], "inline": False},
+            {"name": "🖥️ NQ Application", "value": concept["nq_tip"], "inline": False},
+            {"name": "⏱️ Best Timeframes", "value": concept["timeframes"], "inline": True},
+            {"name": "📅 Posted", "value": date_str, "inline": True},
         ],
-        "footer": {
-            "text": f"SmokeyNQ Education  ·  Concept {count}/{total}  ·  ICT Methodology"
-        },
-        "thumbnail": {"url": "https://i.imgur.com/placeholder.png"},  # optional
+        "footer": {"text": f"SmokeyNQ Education  ·  Concept {count}/{total}  ·  ICT Methodology"},
     }
 
     payload = {
-        "username": "SmokeyNQ Education",
-        "avatar_url": "",  # Add your bot avatar URL here
+        "username": "SmokeSignals",
         "content": "📚 **ICT Concept of the Week** — Study this, apply it, master it.",
         "embeds": [embed],
     }
@@ -397,25 +369,45 @@ async def post_ict_concept():
             if resp.status in (200, 204):
                 print(f"[✓] Posted: {concept['title']}")
             else:
-                print(f"[✗] Failed to post: {resp.status} - {await resp.text()}")
+                print(f"[✗] Failed: {resp.status} - {await resp.text()}")
+
+# ── Discord Bot (for !testict command) ────────────────────────────────────────
+intents = discord.Intents.default()
+intents.message_content = True
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+@bot.event
+async def on_ready():
+    print(f"[✓] SmokeSignals bot online as {bot.user}")
+
+@bot.command(name="testict")
+@commands.has_permissions(administrator=True)
+async def test_ict(ctx):
+    await ctx.send("🔄 Firing ICT concept to #smoke-signals...")
+    await post_ict_concept()
+    await ctx.send("✅ Done! Check #smoke-signals.")
 
 # ── Scheduler ─────────────────────────────────────────────────────────────────
-async def main():
-    print("[*] ICT Education Bot started")
-    while True:
+async def scheduler():
+    await bot.wait_until_ready()
+    print("[*] Scheduler running — Mon & Thu 6:00 PM ET")
+    while not bot.is_closed():
         now = datetime.now(TIMEZONE)
-        # Check if today is Mon (0) or Thu (3) and it's 9:00 AM
         if now.weekday() in POST_DAYS and now.hour == POST_TIME.hour and now.minute == POST_TIME.minute:
             state = load_state()
             last = state.get("last_post_date")
-            # Prevent duplicate posts within the same minute
             if last:
                 last_dt = datetime.fromisoformat(last)
                 if (now - last_dt).total_seconds() < 60:
                     await asyncio.sleep(30)
                     continue
             await post_ict_concept()
-        await asyncio.sleep(30)  # Check every 30 seconds
+        await asyncio.sleep(30)
+
+async def main():
+    async with bot:
+        bot.loop.create_task(scheduler())
+        await bot.start(DISCORD_TOKEN)
 
 if __name__ == "__main__":
     asyncio.run(main())
