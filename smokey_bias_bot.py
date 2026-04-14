@@ -31,6 +31,12 @@ DISCORD_WEBHOOK_NYO   = os.getenv("DISCORD_WEBHOOK_NYO",   "")
 DISCORD_WEBHOOK_EOD   = os.getenv("DISCORD_WEBHOOK_EOD",   "https://discord.com/api/webhooks/1488613489424470036/l2IZxV6gXzVD5HOY5UyHjQw_te38V-vXIuzwagz6v2gy9WNmPtG4qeynD2mLw9fGhveW")
 DISCORD_WEBHOOK_XDRAFTS = os.getenv("DISCORD_WEBHOOK_XDRAFTS", "")
 
+# ── Bot Avatar URLs ───────────────────────────────────────────────────────────
+AVATAR_NEWS = "https://i.imgur.com/SfAZTze.jpeg"
+AVATAR_BIAS = "https://i.imgur.com/8yGNdYt.jpeg"
+AVATAR_NYO  = "https://i.imgur.com/C66iZ8S.jpeg"
+AVATAR_EOD  = "https://i.imgur.com/fjvo4SM.jpeg"
+
 SYMBOL          = "NQ=F"
 IFVG_RANGE_PTS  = 100
 IFVG_LOOKBACK_H = 48
@@ -492,7 +498,7 @@ def run_news_job():
         send_telegram_text(tg_msg)
         # Discord (embed)
         news_embed = build_discord_news(all_events)
-        send_discord_embed(news_embed, webhook=DISCORD_WEBHOOK_NEWS)
+        send_discord_embed(news_embed, webhook=DISCORD_WEBHOOK_NEWS, avatar_url=AVATAR_NEWS)
     except Exception as e:
         try:
             send_telegram_text("<b>News Error:</b> " + str(e))
@@ -1275,16 +1281,18 @@ def strip_html(text):
     return text.strip()
 
 
-def send_discord_embed(embed, image_path=None, webhook=None):
+def send_discord_embed(embed, image_path=None, webhook=None, avatar_url=None):
     """Send a Discord embed via webhook, with optional image attachment."""
     url = webhook or DISCORD_WEBHOOK_BIAS
     if not url:
         return
     try:
+        payload = {"embeds": [embed]}
+        if avatar_url:
+            payload["avatar_url"] = avatar_url
         if image_path and Path(image_path).exists() and Path(image_path).stat().st_size > 1000:
             compressed = compress_screenshot(Path(image_path))
             embed["image"] = {"url": "attachment://chart.jpg"}
-            payload = {"embeds": [embed]}
             with open(compressed, "rb") as img:
                 requests.post(
                     url,
@@ -1293,7 +1301,7 @@ def send_discord_embed(embed, image_path=None, webhook=None):
                     timeout=30,
                 )
         else:
-            requests.post(url, json={"embeds": [embed]}, timeout=10)
+            requests.post(url, json=payload, timeout=10)
         print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Discord embed sent.")
     except Exception as e:
         print("  -> Discord embed send error: " + str(e))
@@ -1848,9 +1856,9 @@ def run_morning_bias():
         discord_msg = build_discord_morning(current_price, midnight_open, asia_high, asia_low,
                                             london_high, london_low, pdh, pdl, bias, ifvgs)
         if screenshot and screenshot.exists():
-            send_discord_embed(discord_msg, screenshot, webhook=DISCORD_WEBHOOK_BIAS)
+            send_discord_embed(discord_msg, screenshot, webhook=DISCORD_WEBHOOK_BIAS, avatar_url=AVATAR_BIAS)
         else:
-            send_discord_embed(discord_msg, webhook=DISCORD_WEBHOOK_BIAS)
+            send_discord_embed(discord_msg, webhook=DISCORD_WEBHOOK_BIAS, avatar_url=AVATAR_BIAS)
 
         # X/Twitter
         tweet = build_bias_tweet(current_price, midnight_open, asia_high, asia_low,
@@ -1905,9 +1913,9 @@ def run_nyo_update():
             nyo_ifvgs,
         )
         if screenshot and screenshot.exists():
-            send_discord_embed(discord_nyo, screenshot, webhook=DISCORD_WEBHOOK_NYO)
+            send_discord_embed(discord_nyo, screenshot, webhook=DISCORD_WEBHOOK_NYO, avatar_url=AVATAR_NYO)
         else:
-            send_discord_embed(discord_nyo, webhook=DISCORD_WEBHOOK_NYO)
+            send_discord_embed(discord_nyo, webhook=DISCORD_WEBHOOK_NYO, avatar_url=AVATAR_NYO)
 
         # X/Twitter
         nyo_tweet = build_nyo_tweet(current_price, bias, today_state["midnight_open"], nyo_ifvgs)
@@ -2014,7 +2022,7 @@ def run_eod_score():
         send_telegram_text(tg_msg)
         # Discord (embed)
         eod_embed = build_discord_eod(direction, result_type, current_price, mo, price_diff, winrate_data)
-        send_discord_embed(eod_embed, webhook=DISCORD_WEBHOOK_EOD)
+        send_discord_embed(eod_embed, webhook=DISCORD_WEBHOOK_EOD, avatar_url=AVATAR_EOD)
 
         # X/Twitter
         eod_tweet = build_eod_tweet(direction, result_type, current_price, mo, price_diff, winrate_data)
