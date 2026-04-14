@@ -363,7 +363,7 @@ async def post_ict_concept():
     "avatar_url": "https://i.imgur.com/1TepzcE.jpeg",
     "content": "📚 **ICT Concept of the Week** — Study this, apply it, master it.",
     "embeds": [embed],
-    }
+}
     }
 
     async with aiohttp.ClientSession() as session:
