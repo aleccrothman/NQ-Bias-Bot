@@ -359,11 +359,10 @@ async def post_ict_concept():
     }
 
     payload = {
-    "username": "SmokeSignals",
-    "avatar_url": "https://i.imgur.com/1TepzcE.jpeg",
-    "content": "📚 **ICT Concept of the Week** — Study this, apply it, master it.",
-    "embeds": [embed],
-}
+        "username": "SmokeSignals",
+        "avatar_url": "https://i.imgur.com/1TepzcE.jpeg",
+        "content": "📚 **ICT Concept of the Week** — Study this, apply it, master it.",
+        "embeds": [embed],
     }
 
     async with aiohttp.ClientSession() as session:
@@ -387,7 +386,7 @@ async def on_ready():
 async def test_ict(ctx):
     await ctx.send("🔄 Firing ICT concept to #smoke-signals...")
     await post_ict_concept()
-    await ctx.send("✅ Done! Check #smoke-signals.")
+    await ctx.send("✅ Done! Check #strategy.")
 
 # ── Scheduler ─────────────────────────────────────────────────────────────────
 async def scheduler():
