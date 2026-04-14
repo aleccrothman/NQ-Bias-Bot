@@ -359,7 +359,7 @@ async def post_ict_concept():
     }
 
     payload = {
-        "username": "SmokeSignals",
+        "username": "Smokey EDU",
         "avatar_url": "https://i.imgur.com/1TepzcE.jpeg",
         "content": "📚 **ICT Concept of the Week** — Study this, apply it, master it.",
         "embeds": [embed],
@@ -384,9 +384,15 @@ async def on_ready():
 @bot.command(name="testict")
 @commands.has_permissions(administrator=True)
 async def test_ict(ctx):
-    await ctx.send("🔄 Firing ICT concept to #smoke-signals...")
+    await ctx.send("🔄 Firing ICT concept to #strategy...")
     await post_ict_concept()
     await ctx.send("✅ Done! Check #strategy.")
+
+@bot.command(name="resetict")
+@commands.has_permissions(administrator=True)
+async def reset_ict(ctx):
+    r.delete(REDIS_KEY)
+    await ctx.send("✅ ICT concept cycle reset — back to 0/30.")
 
 # ── Scheduler ─────────────────────────────────────────────────────────────────
 async def scheduler():
