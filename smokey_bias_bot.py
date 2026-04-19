@@ -54,6 +54,9 @@ DISCORD_WEBHOOK_XDRAFTS = os.getenv("DISCORD_WEBHOOK_XDRAFTS", "")
 # Optional: if set, bot listens for !test* commands in Discord
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
 
+# Optional: if set, enables !draftreply command
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+
 # ── Bot Avatar URLs ───────────────────────────────────────────────────────────
 AVATAR_NEWS = "https://i.imgur.com/SfAZTze.jpeg"
 AVATAR_BIAS = "https://i.imgur.com/8yGNdYt.jpeg"
@@ -2555,7 +2558,74 @@ def clear_jobs_ran_for_today():
         print("[STARTUP] Failed to clear jobs_ran: " + str(e))
 
 
-# ── DISCORD COMMAND LISTENER (optional, runs in background thread) ──────────
+# ── X REPLY DRAFTER ──────────────────────────────────────────────────────────
+# Given a tweet pasted into Discord, generate 3 reply options via Groq.
+
+SMOKEY_REPLY_SYSTEM_PROMPT = """You are Smokey (@SmokeyNQ), an NQ futures trader
+who trades the NY session (9-11am ET) using ICT methodology. Your edge is
+iFVGs, Midnight Open (MO), liquidity sweeps, and displacement reads.
+
+You are writing replies to other traders' tweets on X. Write THREE reply
+options, each with a different angle:
+
+1. ANALYTICAL — add technical context or a level they missed. Reference
+   ICT concepts when relevant (iFVG, sweep, displacement, MO). Be specific.
+
+2. CONTRARIAN — respectfully push back or offer the other side. No snark,
+   no "actually." Just an alternative read backed by structure.
+
+3. LEVEL CALL — give a specific price level or bias call with a number.
+   Something that will be provably right or wrong by EOD.
+
+RULES:
+- Each reply under 270 chars (leave room for @ mentions).
+- Write like a trader talking to traders. No hype. No emojis unless
+   a single 📉/📈/🎯 genuinely adds something.
+- Never start with "Great point" or any sycophantic opener.
+- No hashtags.
+- Don't explain ICT concepts — audience already knows them.
+- If the tweet is low-quality or not worth replying to, say so.
+
+FORMAT your response EXACTLY like this:
+
+**1. Analytical**
+[reply text]
+
+**2. Contrarian**
+[reply text]
+
+**3. Level Call**
+[reply text]
+"""
+
+
+def generate_reply_drafts(tweet_text):
+    """Call Groq and return the 3 drafts as a single string."""
+    if not GROQ_API_KEY:
+        return "GROQ_API_KEY not set in Railway env vars."
+    try:
+        resp = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": "Bearer " + GROQ_API_KEY,
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "llama-3.3-70b-versatile",
+                "messages": [
+                    {"role": "system", "content": SMOKEY_REPLY_SYSTEM_PROMPT},
+                    {"role": "user", "content": "Tweet to reply to:\n\n" + tweet_text},
+                ],
+                "temperature": 0.8,
+                "max_tokens": 600,
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        return "Groq error: " + str(e)
+
 # If DISCORD_BOT_TOKEN is set, listen for test commands in Discord.
 # Commands: !testrecap, !testbotw, !testbias, !testnyo, !testeod, !testnews
 # Safe: all test commands bypass `fired_today` so you can re-run the same day.
@@ -2638,6 +2708,34 @@ def start_command_listener():
         async def testnews(ctx):
             await fire_job(ctx, run_news_job, "Macro News")
 
+        @bot.command(name="draftreply")
+        async def draftreply(ctx, *, tweet: str = None):
+            """Usage: !draftreply <paste tweet text here>"""
+            if not tweet or len(tweet.strip()) < 10:
+                await ctx.send(
+                    "Usage: `!draftreply <paste the tweet text>`\n"
+                    "Example: `!draftreply NQ looking bullish into NY open, liking a retrace to 21800`"
+                )
+                return
+            await ctx.send("\U0001f9e0 Drafting 3 replies...")
+            try:
+                drafts = await asyncio.get_event_loop().run_in_executor(
+                    None, generate_reply_drafts, tweet
+                )
+                preview = tweet if len(tweet) < 280 else tweet[:277] + "..."
+                response = (
+                    "**Source tweet:**\n> " + preview + "\n\n"
+                    "**Drafts:**\n" + drafts + "\n\n"
+                    "_Pick one, edit, post. Check char count before sending._"
+                )
+                if len(response) <= 2000:
+                    await ctx.send(response)
+                else:
+                    await ctx.send(response[:1997] + "...")
+                    await ctx.send(response[1997:])
+            except Exception as e:
+                await ctx.send("\u274c Draft error: " + str(e)[:500])
+
         @bot.command(name="smokeyhelp")
         async def smokeyhelp(ctx):
             msg = (
@@ -2648,6 +2746,7 @@ def start_command_listener():
                 "`!testnews`  — fire macro news now\n"
                 "`!testbotw`  — fire Bias of the Week\n"
                 "`!testrecap` — fire Weekly Recap\n"
+                "`!draftreply <tweet>` — draft 3 X replies to a tweet\n"
             )
             await ctx.send(msg)
 
