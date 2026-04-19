@@ -51,6 +51,9 @@ DISCORD_WEBHOOK_NYO   = os.getenv("DISCORD_WEBHOOK_NYO",   "")
 DISCORD_WEBHOOK_EOD   = os.getenv("DISCORD_WEBHOOK_EOD",   "https://discord.com/api/webhooks/1488613489424470036/l2IZxV6gXzVD5HOY5UyHjQw_te38V-vXIuzwagz6v2gy9WNmPtG4qeynD2mLw9fGhveW")
 DISCORD_WEBHOOK_XDRAFTS = os.getenv("DISCORD_WEBHOOK_XDRAFTS", "")
 
+# Optional: if set, bot listens for !test* commands in Discord
+DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
+
 # ── Bot Avatar URLs ───────────────────────────────────────────────────────────
 AVATAR_NEWS = "https://i.imgur.com/SfAZTze.jpeg"
 AVATAR_BIAS = "https://i.imgur.com/8yGNdYt.jpeg"
@@ -2552,6 +2555,129 @@ def clear_jobs_ran_for_today():
         print("[STARTUP] Failed to clear jobs_ran: " + str(e))
 
 
+# ── DISCORD COMMAND LISTENER (optional, runs in background thread) ──────────
+# If DISCORD_BOT_TOKEN is set, listen for test commands in Discord.
+# Commands: !testrecap, !testbotw, !testbias, !testnyo, !testeod, !testnews
+# Safe: all test commands bypass `fired_today` so you can re-run the same day.
+
+def start_command_listener():
+    """Spawn a daemon thread running a discord.py bot for test commands."""
+    if not DISCORD_BOT_TOKEN:
+        print("[COMMANDS] DISCORD_BOT_TOKEN not set - skipping command listener")
+        return
+
+    try:
+        import discord
+        from discord.ext import commands
+    except ImportError:
+        print("[COMMANDS] discord.py not installed - skipping command listener")
+        return
+
+    import threading
+    import asyncio
+
+    def run_bot():
+        # Each thread needs its own event loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        intents = discord.Intents.default()
+        intents.message_content = True
+        bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
+
+        @bot.event
+        async def on_ready():
+            print("[COMMANDS] Listener online as " + str(bot.user))
+
+        # Helper: run a job function in a thread so Discord's event loop doesn't block
+        async def fire_job(ctx, job_fn, label):
+            await ctx.send("\U0001f504 Firing " + label + "...")
+            try:
+                # Run the (synchronous) job in a thread executor so Discord heartbeat
+                # doesn't timeout while the job does its network calls
+                await asyncio.get_event_loop().run_in_executor(None, job_fn)
+                await ctx.send("\u2705 " + label + " complete")
+            except Exception as e:
+                await ctx.send("\u274c " + label + " error: " + str(e)[:500])
+                print("[COMMANDS] " + label + " error: " + str(e))
+
+        @bot.command(name="testrecap")
+        async def testrecap(ctx):
+            await fire_job(ctx, run_weekend_recap, "Weekly Recap")
+
+        @bot.command(name="testbotw")
+        async def testbotw(ctx):
+            await fire_job(ctx, run_trade_of_week, "Bias of the Week")
+
+        @bot.command(name="testbias")
+        async def testbias(ctx):
+            # Pop today's morning-ran flag so it will actually run
+            try:
+                _clear_job_flag("morning")
+            except Exception:
+                pass
+            await fire_job(ctx, run_morning_bias, "Morning Bias")
+
+        @bot.command(name="testnyo")
+        async def testnyo(ctx):
+            try:
+                _clear_job_flag("nyo")
+            except Exception:
+                pass
+            await fire_job(ctx, run_nyo_update, "NYO Update")
+
+        @bot.command(name="testeod")
+        async def testeod(ctx):
+            try:
+                _clear_job_flag("eod")
+            except Exception:
+                pass
+            await fire_job(ctx, run_eod_score, "EOD Score")
+
+        @bot.command(name="testnews")
+        async def testnews(ctx):
+            await fire_job(ctx, run_news_job, "Macro News")
+
+        @bot.command(name="smokeyhelp")
+        async def smokeyhelp(ctx):
+            msg = (
+                "**Smokey Bias Bot — Test Commands**\n"
+                "`!testbias`  — fire morning bias now\n"
+                "`!testnyo`   — fire NYO update now\n"
+                "`!testeod`   — fire EOD score now\n"
+                "`!testnews`  — fire macro news now\n"
+                "`!testbotw`  — fire Bias of the Week\n"
+                "`!testrecap` — fire Weekly Recap\n"
+            )
+            await ctx.send(msg)
+
+        try:
+            bot.run(DISCORD_BOT_TOKEN, log_handler=None)
+        except Exception as e:
+            print("[COMMANDS] Bot crashed: " + str(e))
+
+    t = threading.Thread(target=run_bot, daemon=True, name="DiscordCommandListener")
+    t.start()
+    print("[COMMANDS] Discord command listener thread started")
+
+
+def _clear_job_flag(job_key):
+    """Remove a single job from today's jobs_ran so it can re-run on demand.
+    Jobs are tracked inside the winrate file under data['jobs_ran']['ran'].
+    """
+    try:
+        data = load_winrate()
+        today = datetime.now(ET).strftime("%Y-%m-%d")
+        jr = data.get("jobs_ran", {})
+        if jr.get("date") == today and job_key in jr.get("ran", {}):
+            del jr["ran"][job_key]
+            data["jobs_ran"] = jr
+            save_winrate(data)
+            print("[COMMANDS] Cleared " + job_key + " flag for re-run")
+    except Exception as e:
+        print("[COMMANDS] Could not clear " + job_key + " flag: " + str(e))
+
+
 def main():
     # Load today's state from disk in case of restart
     load_today_state()
@@ -2574,6 +2700,9 @@ def main():
 
     # Catchup disabled - scheduler loop fires missed jobs automatically
     # run_catchup()
+
+    # Start Discord command listener (daemon thread, no-op if no token)
+    start_command_listener()
 
     # Jobs fired by exact UTC time check every 30 seconds
     # Format: (utc_hour, utc_minute, job_key, function, weekday_only)
