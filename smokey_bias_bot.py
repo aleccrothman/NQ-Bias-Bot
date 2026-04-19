@@ -16,6 +16,26 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 import pytz
 
+# ── Vision verification (Opus 4.7 cross-check of bias call) ──
+# Safe import: if the module or its deps are missing, vision is simply skipped.
+try:
+    from bias_vision import (
+        verify_bias, apply_vision_adjustment,
+        verify_nyo_bias, format_nyo_vision_note,
+    )
+    VISION_AVAILABLE = True
+except ImportError as _e:
+    print("[VISION] bias_vision module not available (" + str(_e) + ") — vision checks disabled")
+    VISION_AVAILABLE = False
+    def verify_bias(**kwargs):
+        return None
+    def apply_vision_adjustment(original_bias, original_grade, verification):
+        return original_bias, original_grade, None
+    def verify_nyo_bias(**kwargs):
+        return None
+    def format_nyo_vision_note(verification):
+        return None
+
 # CONFIG
 TELEGRAM_BOT_TOKEN  = "8757455017:AAFuZgFN5ml3xNCVVE3ww8DyzWThtQrTMos"
 TELEGRAM_CHAT_ID    = "5048230949"
@@ -1828,6 +1848,68 @@ def run_morning_bias():
         ifvgs = detect_ifvgs(current_price)
         disp  = detect_15m_displacement(midnight_open)
 
+        # ── Opus 4.7 vision verification ────────────────────────────────────
+        # Independent chart read; can upgrade grade on confirmation or flag/demote on disagreement.
+        if VISION_AVAILABLE and screenshot and screenshot.exists():
+            print("  -> Running vision verification against screenshot...")
+            verification = verify_bias(
+                screenshot_path=screenshot,
+                system_bias=bias["direction"],
+                system_grade=bias.get("grade", "C"),
+                asia_high=asia_high,
+                asia_low=asia_low,
+                london_high=london_high,
+                london_low=london_low,
+                midnight_open=midnight_open,
+                current_price=current_price,
+            )
+            final_bias, final_grade, vision_flag = apply_vision_adjustment(
+                original_bias=bias["direction"],
+                original_grade=bias.get("grade", "C"),
+                verification=verification,
+            )
+            if verification:
+                print("  -> Vision read: " + str(verification.get("chart_read", "?")) +
+                      " | agrees=" + str(verification.get("agrees_with_system", "?")) +
+                      " | conf=" + str(verification.get("confidence", "?")))
+                if vision_flag:
+                    print("  -> Vision flag: " + vision_flag)
+                # Apply adjustments
+                bias["direction"] = final_bias
+                bias["grade"] = final_grade
+                # Keep `overall` display string consistent with the (possibly changed) direction
+                if final_bias == "bullish":
+                    bias["overall"] = "BULLISH"
+                elif final_bias == "bearish":
+                    bias["overall"] = "BEARISH"
+                else:
+                    bias["overall"] = "NEUTRAL / NO TRADE"
+                if vision_flag:
+                    bias["vision_flag"] = vision_flag
+                # Persist verification log to /data for later calibration review
+                try:
+                    vlog = Path("/data/vision_verifications.jsonl")
+                    with open(vlog, "a") as _vf:
+                        _vf.write(json.dumps({
+                            "ts": datetime.now(UTC).isoformat(),
+                            "date_et": datetime.now(ET).strftime("%Y-%m-%d"),
+                            "system_bias_before": verification.get("_system_bias_before", None),
+                            "system_grade_before": verification.get("_system_grade_before", None),
+                            "final_bias": final_bias,
+                            "final_grade": final_grade,
+                            "verification": verification,
+                            "flag": vision_flag,
+                        }) + "\n")
+                except Exception as _le:
+                    print("  -> Vision log write failed: " + str(_le))
+            else:
+                print("  -> Vision verification unavailable, keeping original bias")
+        else:
+            if not VISION_AVAILABLE:
+                pass  # Module import failed at startup; already logged
+            elif not screenshot:
+                print("  -> No screenshot to verify against, skipping vision check")
+
         today_state.update({
             "bias": bias["direction"], "score": bias["score"],
             "midnight_open": midnight_open,
@@ -1843,6 +1925,10 @@ def run_morning_bias():
         caption += "\n--------------------\n"
         caption += "\U0001f56f <b>15M Confirmation:</b>\n"
         caption += disp["icon"] + " <i>" + disp["detail"] + "</i>"
+
+        # Vision verification note (from Opus 4.7)
+        if bias.get("vision_flag"):
+            caption += "\n\n<b>Vision Check:</b> " + bias["vision_flag"]
 
         grade = bias.get("grade", "C")
         if grade == "A" and ifvgs:
@@ -1899,6 +1985,48 @@ def run_nyo_update():
             nyo_ifvgs,
         )
         screenshot = take_chart_screenshot()
+
+        # ── Opus 4.7 NYO vision check: is the morning bias still valid? ──
+        nyo_vision_note = None
+        if VISION_AVAILABLE and screenshot and screenshot.exists():
+            print("  -> Running NYO vision check...")
+            nyo_verification = verify_nyo_bias(
+                screenshot_path=screenshot,
+                morning_bias=today_state["bias"],
+                current_price=current_price,
+                asia_high=today_state["asia_high"],
+                asia_low=today_state["asia_low"],
+                london_high=today_state["london_high"],
+                london_low=today_state["london_low"],
+                midnight_open=today_state["midnight_open"],
+                pdh=today_state["pdh"],
+                pdl=today_state["pdl"],
+            )
+            if nyo_verification:
+                print("  -> NYO Vision status: " + str(nyo_verification.get("status", "?")) +
+                      " | valid=" + str(nyo_verification.get("still_valid", "?")) +
+                      " | conf=" + str(nyo_verification.get("confidence", "?")))
+                nyo_vision_note = format_nyo_vision_note(nyo_verification)
+                # Log for calibration
+                try:
+                    vlog = Path("/data/vision_verifications.jsonl")
+                    with open(vlog, "a") as _vf:
+                        _vf.write(json.dumps({
+                            "ts": datetime.now(UTC).isoformat(),
+                            "date_et": datetime.now(ET).strftime("%Y-%m-%d"),
+                            "source": "nyo",
+                            "morning_bias": today_state["bias"],
+                            "current_price": current_price,
+                            "verification": nyo_verification,
+                            "note": nyo_vision_note,
+                        }) + "\n")
+                except Exception as _le:
+                    print("  -> NYO Vision log write failed: " + str(_le))
+
+        # Attach vision note to the message if present
+        if nyo_vision_note:
+            msg += "\n\n" + nyo_vision_note
+
         if screenshot and screenshot.exists():
             send_telegram_photo(screenshot, msg)
         else:
@@ -1912,6 +2040,9 @@ def run_nyo_update():
             today_state["pdh"],         today_state["pdl"],
             nyo_ifvgs,
         )
+        # Append vision note to Discord too
+        if nyo_vision_note and isinstance(discord_nyo, dict) and discord_nyo.get("description"):
+            discord_nyo["description"] += "\n\n" + nyo_vision_note
         if screenshot and screenshot.exists():
             send_discord_embed(discord_nyo, screenshot, webhook=DISCORD_WEBHOOK_NYO, avatar_url=AVATAR_NYO)
         else:
@@ -2070,6 +2201,42 @@ def send_welcome_message(chat_id):
     }, timeout=10)
 
 
+def build_discord_weekend_recap(week_wins, week_losses, week_chops, week_streak, wins, losses, neutrals, total):
+    """Discord embed for Saturday weekend recap."""
+    date_str = datetime.now(ET).strftime("%a %b %d")
+    streak_display = " ".join(list(week_streak)) if week_streak else "\u2014"
+
+    # Overall win rate field
+    if total >= 10:
+        pct = round(wins / total * 100)
+        wr_val = "**" + str(pct) + "%** accuracy (" + str(total) + " days)\n"
+        wr_val += "`" + str(wins) + "W` `" + str(losses) + "L` `" + str(neutrals) + "C`"
+    else:
+        remaining = 10 - total
+        wr_val = "`" + str(wins) + "W` `" + str(losses) + "L` `" + str(neutrals) + "C`\n"
+        wr_val += "*" + str(remaining) + " more days to unlock win rate %*"
+
+    week_val = "`" + str(week_wins) + "W` `" + str(week_losses) + "L` `" + str(week_chops) + "C`"
+    if week_streak:
+        week_val += "\nStreak: `" + week_streak + "`"
+    else:
+        week_val += "\n*No trades recorded this week*"
+
+    embed = {
+        "title": "\U0001f4c5  Weekly Recap  |  " + date_str,
+        "description": "Here's how the bias performed this week, and what to watch next.",
+        "color": 0x5865f2,  # Discord blurple
+        "fields": [
+            {"name": "\U0001f4ca  This Week",   "value": week_val, "inline": True},
+            {"name": "\U0001f3c6  Overall",     "value": wr_val,   "inline": True},
+            {"name": "\U0001f50d  Next Week",   "value": "\u2022 Sunday 6 PM ET \u2014 NQ opens, watch for NWOG\n\u2022 Check Forex Factory for high-impact events\n\u2022 Mark this week's high/low as liquidity targets", "inline": False},
+        ],
+        "footer": {"text": "Smokey Bias Bot  \u2022  Have a great weekend  \u2022  Not financial advice."},
+        "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    return embed
+
+
 def run_weekend_recap():
     """Saturday morning - weekly recap and what to watch next week."""
     print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running weekend recap...")
@@ -2117,7 +2284,18 @@ def run_weekend_recap():
         msg += "Have a great weekend! 🏖\n"
         msg += "<i>Not financial advice.</i>"
 
+        # Telegram
         send_telegram_text(msg)
+
+        # Discord — #end-of-day-results
+        try:
+            recap_embed = build_discord_weekend_recap(
+                week_wins, week_losses, week_chops, week_streak,
+                wins, losses, neutrals, total,
+            )
+            send_discord_embed(recap_embed, webhook=DISCORD_WEBHOOK_EOD, avatar_url=AVATAR_EOD)
+        except Exception as _de:
+            print("  -> Discord weekend recap failed: " + str(_de))
 
     except Exception as e:
         try:
@@ -2230,6 +2408,40 @@ def run_monthly_report():
             pass
 
 
+def build_discord_bias_of_week(wins_this_week, week_wins, week_losses, week_chops):
+    """Discord embed for Friday Bias of the Week."""
+    date_str = datetime.now(ET).strftime("%b %d")
+
+    if not wins_this_week:
+        headline = "No winning biases this week"
+        body = "Chop week — market was indecisive"
+        color = 0x95a5a6
+    else:
+        n = len(wins_this_week)
+        plural = "es" if n > 1 else ""
+        headline = str(n) + " bias" + plural + " delivered this week"
+        body = "\n".join(
+            "\u2705 `" + r.get("date", "") + "` — **" + r.get("bias", "").upper() + "** delivered"
+            for r in wins_this_week
+        )
+        color = 0xf1c40f  # gold
+
+    week_line = "`" + str(week_wins) + "W` `" + str(week_losses) + "L` `" + str(week_chops) + "C`"
+
+    embed = {
+        "title": "\U0001f3c6  Bias of the Week  |  " + date_str,
+        "description": "**" + headline + "**",
+        "color": color,
+        "fields": [
+            {"name": "\u2728  Winners",     "value": body,       "inline": False},
+            {"name": "\U0001f4ca  Week",    "value": week_line,  "inline": True},
+        ],
+        "footer": {"text": "Smokey Bias Bot  \u2022  Join: @SmokeyNQBot  \u2022  Not financial advice."},
+        "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    return embed
+
+
 def run_trade_of_week():
     """Friday EOD - highlight the best bias delivery of the week."""
     print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running trade of the week...")
@@ -2260,7 +2472,15 @@ def run_trade_of_week():
         msg += "Join: @SmokeyNQBot\n"
         msg += "<i>Not financial advice.</i>"
 
+        # Telegram
         send_telegram_text(msg)
+
+        # Discord — #end-of-day-results
+        try:
+            botw_embed = build_discord_bias_of_week(wins_this_week, week_wins, week_losses, week_chops)
+            send_discord_embed(botw_embed, webhook=DISCORD_WEBHOOK_EOD, avatar_url=AVATAR_EOD)
+        except Exception as _de:
+            print("  -> Discord bias-of-week failed: " + str(_de))
 
     except Exception as e:
         try:
