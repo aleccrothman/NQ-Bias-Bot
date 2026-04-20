@@ -2708,13 +2708,28 @@ def start_command_listener():
         async def testnews(ctx):
             await fire_job(ctx, run_news_job, "Macro News")
 
-        @bot.command(name="draftreply")
+       @bot.command(name="draftreply")
         async def draftreply(ctx, *, tweet: str = None):
             """Usage: !draftreply <paste tweet text here>"""
+            # Multi-line fix: grab raw message content if Discord truncated at a newline
+            if ctx.message.content.startswith("!draftreply"):
+                raw = ctx.message.content[len("!draftreply"):].strip()
+                if len(raw) > (len(tweet) if tweet else 0):
+                    tweet = raw
             if not tweet or len(tweet.strip()) < 10:
                 await ctx.send(
                     "Usage: `!draftreply <paste the tweet text>`\n"
                     "Example: `!draftreply NQ looking bullish into NY open, liking a retrace to 21800`"
+                )
+                return
+            # URL check: can't read tweets from links, need the actual text
+            tweet_stripped = tweet.strip().lower()
+            if tweet_stripped.startswith(("http://", "https://", "www.", "x.com/", "twitter.com/")):
+                await ctx.send(
+                    "\u26a0\ufe0f That looks like a URL. I can't read tweets from links \u2014 "
+                    "I need the actual text.\n\n"
+                    "**How to fix:** On the tweet, long-press the text (iPhone) or triple-click it (desktop) "
+                    "to select it, copy, then paste after `!draftreply`."
                 )
                 return
             await ctx.send("\U0001f9e0 Drafting 3 replies...")
