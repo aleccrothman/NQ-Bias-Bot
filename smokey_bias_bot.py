@@ -2708,7 +2708,7 @@ def start_command_listener():
         async def testnews(ctx):
             await fire_job(ctx, run_news_job, "Macro News")
 
-       @bot.command(name="draftreply")
+        @bot.command(name="draftreply")
         async def draftreply(ctx, *, tweet: str = None):
             """Usage: !draftreply <paste tweet text here>"""
             # Multi-line fix: grab raw message content if Discord truncated at a newline
