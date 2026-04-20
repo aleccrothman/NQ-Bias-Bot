@@ -3031,7 +3031,7 @@ def start_command_listener():
                 "**Tweet helpers**\n"
                 "`!draftreply <tweet text>` - 3 reply options to someone else's tweet\n"
                 "`!tweet <topic>` - 3 original tweet drafts\n"
-                "`!thread <topic>` - draft a 4-6 tweet thread\n"
+                "`!makethread <topic>` - draft a 4-6 tweet thread\n"
                 "`!hook <topic>` - 5 opening-line options\n"
                 "`!roast <your tweet>` - honest critique before you post\n"
             )
