@@ -2937,7 +2937,7 @@ def start_command_listener():
                 await ctx.send("Tweet error: " + str(e)[:500])
                 print("[COMMANDS] tweet error: " + str(e))
 
-       @bot.command(name="makethread")
+        @bot.command(name="makethread")
         async def threadcmd(ctx, *, topic: str = None):
             raw_content = ctx.message.content
             if raw_content.startswith("!thread"):
