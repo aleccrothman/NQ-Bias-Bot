@@ -2889,7 +2889,7 @@ def start_command_listener():
         async def testnews(ctx):
             await fire_job(ctx, run_news_job, "Macro News")
 
-       @bot.command(name="draftreply")
+        @bot.command(name="draftreply")
         async def draftreply(ctx, *, tweet: str = None):
             raw_content = ctx.message.content
             if raw_content.startswith("!draftreply"):
