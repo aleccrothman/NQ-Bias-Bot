@@ -2647,7 +2647,6 @@ def start_command_listener():
     import asyncio
 
     def run_bot():
-        # Each thread needs its own event loop
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
@@ -2659,16 +2658,13 @@ def start_command_listener():
         async def on_ready():
             print("[COMMANDS] Listener online as " + str(bot.user))
 
-        # Helper: run a job function in a thread so Discord's event loop doesn't block
         async def fire_job(ctx, job_fn, label):
-            await ctx.send("\U0001f504 Firing " + label + "...")
+            await ctx.send("Firing " + label + "...")
             try:
-                # Run the (synchronous) job in a thread executor so Discord heartbeat
-                # doesn't timeout while the job does its network calls
                 await asyncio.get_event_loop().run_in_executor(None, job_fn)
-                await ctx.send("\u2705 " + label + " complete")
+                await ctx.send("Done: " + label)
             except Exception as e:
-                await ctx.send("\u274c " + label + " error: " + str(e)[:500])
+                await ctx.send("Error in " + label + ": " + str(e)[:500])
                 print("[COMMANDS] " + label + " error: " + str(e))
 
         @bot.command(name="testrecap")
@@ -2681,7 +2677,6 @@ def start_command_listener():
 
         @bot.command(name="testbias")
         async def testbias(ctx):
-            # Pop today's morning-ran flag so it will actually run
             try:
                 _clear_job_flag("morning")
             except Exception:
@@ -2710,58 +2705,47 @@ def start_command_listener():
 
         @bot.command(name="draftreply")
         async def draftreply(ctx, *, tweet: str = None):
-            """Usage: !draftreply <paste tweet text here>"""
-            # Multi-line fix: grab raw message content if Discord truncated at a newline
-            if ctx.message.content.startswith("!draftreply"):
-                raw = ctx.message.content[len("!draftreply"):].strip()
-                if len(raw) > (len(tweet) if tweet else 0):
-                    tweet = raw
-                if not tweet or len(tweet.strip()) < 10:
-                    await ctx.send(
-                    "Usage: `!draftreply <paste the tweet text>`\n"
-                    "Example: `!draftreply NQ looking bullish into NY open, liking a retrace to 21800`"
-                )
+            # Grab raw message content to handle multi-line tweets
+            raw_content = ctx.message.content
+            if raw_content.startswith("!draftreply"):
+                tweet = raw_content[len("!draftreply"):].strip()
+
+            # Empty or too short
+            if not tweet or len(tweet.strip()) < 10:
+                await ctx.send("Usage: !draftreply <paste the tweet text>")
                 return
-            # URL check: can't read tweets from links, need the actual text
-            tweet_stripped = tweet.strip().lower()
-            if tweet_stripped.startswith(("http://", "https://", "www.", "x.com/", "twitter.com/")):
-                await ctx.send(
-                    "\u26a0\ufe0f That looks like a URL. I can't read tweets from links \u2014 "
-                    "I need the actual text.\n\n"
-                    "**How to fix:** On the tweet, long-press the text (iPhone) or triple-click it (desktop) "
-                    "to select it, copy, then paste after `!draftreply`."
-                )
+
+            # Reject URLs
+            tweet_lower = tweet.strip().lower()
+            if tweet_lower.startswith("http://") or tweet_lower.startswith("https://") or tweet_lower.startswith("www.") or tweet_lower.startswith("x.com/") or tweet_lower.startswith("twitter.com/"):
+                await ctx.send("That looks like a URL. I cannot read tweets from links. Paste the actual tweet text instead.")
                 return
-            await ctx.send("\U0001f9e0 Drafting 3 replies...")
+
+            await ctx.send("Drafting 3 replies...")
             try:
-                drafts = await asyncio.get_event_loop().run_in_executor(
-                    None, generate_reply_drafts, tweet
-                )
+                drafts = await asyncio.get_event_loop().run_in_executor(None, generate_reply_drafts, tweet)
                 preview = tweet if len(tweet) < 280 else tweet[:277] + "..."
-                response = (
-                    "**Source tweet:**\n> " + preview + "\n\n"
-                    "**Drafts:**\n" + drafts + "\n\n"
-                    "_Pick one, edit, post. Check char count before sending._"
-                )
+                response = "**Source tweet:**\n> " + preview + "\n\n**Drafts:**\n" + drafts + "\n\n_Pick one, edit, post._"
                 if len(response) <= 2000:
                     await ctx.send(response)
                 else:
                     await ctx.send(response[:1997] + "...")
                     await ctx.send(response[1997:])
             except Exception as e:
-                await ctx.send("\u274c Draft error: " + str(e)[:500])
+                await ctx.send("Draft error: " + str(e)[:500])
+                print("[COMMANDS] draftreply error: " + str(e))
 
         @bot.command(name="smokeyhelp")
         async def smokeyhelp(ctx):
             msg = (
-                "**Smokey Bias Bot — Test Commands**\n"
-                "`!testbias`  — fire morning bias now\n"
-                "`!testnyo`   — fire NYO update now\n"
-                "`!testeod`   — fire EOD score now\n"
-                "`!testnews`  — fire macro news now\n"
-                "`!testbotw`  — fire Bias of the Week\n"
-                "`!testrecap` — fire Weekly Recap\n"
-                "`!draftreply <tweet>` — draft 3 X replies to a tweet\n"
+                "**Smokey Bias Bot Commands**\n"
+                "`!testbias` - fire morning bias now\n"
+                "`!testnyo` - fire NYO update now\n"
+                "`!testeod` - fire EOD score now\n"
+                "`!testnews` - fire macro news now\n"
+                "`!testbotw` - fire Bias of the Week\n"
+                "`!testrecap` - fire Weekly Recap\n"
+                "`!draftreply <tweet text>` - draft 3 X replies\n"
             )
             await ctx.send(msg)
 
@@ -2773,7 +2757,6 @@ def start_command_listener():
     t = threading.Thread(target=run_bot, daemon=True, name="DiscordCommandListener")
     t.start()
     print("[COMMANDS] Discord command listener thread started")
-
 
 def _clear_job_flag(job_key):
     """Remove a single job from today's jobs_ran so it can re-run on demand.
