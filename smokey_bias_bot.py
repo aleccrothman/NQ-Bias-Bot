@@ -2716,8 +2716,8 @@ def start_command_listener():
                 raw = ctx.message.content[len("!draftreply"):].strip()
                 if len(raw) > (len(tweet) if tweet else 0):
                     tweet = raw
-            if not tweet or len(tweet.strip()) < 10:
-                await ctx.send(
+                if not tweet or len(tweet.strip()) < 10:
+                    await ctx.send(
                     "Usage: `!draftreply <paste the tweet text>`\n"
                     "Example: `!draftreply NQ looking bullish into NY open, liking a retrace to 21800`"
                 )
