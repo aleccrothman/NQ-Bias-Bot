@@ -3020,14 +3020,20 @@ def start_command_listener():
         @bot.command(name="smokeyhelp")
         async def smokeyhelp(ctx):
             msg = (
-                "**Smokey Bias Bot Commands**\n"
+                "**Smokey Bias Bot Commands**\n\n"
+                "**Bot triggers (test the scheduled posts)**\n"
                 "`!testbias` - fire morning bias now\n"
                 "`!testnyo` - fire NYO update now\n"
                 "`!testeod` - fire EOD score now\n"
                 "`!testnews` - fire macro news now\n"
                 "`!testbotw` - fire Bias of the Week\n"
-                "`!testrecap` - fire Weekly Recap\n"
-                "`!draftreply <tweet text>` - draft 3 X replies\n"
+                "`!testrecap` - fire Weekly Recap\n\n"
+                "**Tweet helpers**\n"
+                "`!draftreply <tweet text>` - 3 reply options to someone else's tweet\n"
+                "`!tweet <topic>` - 3 original tweet drafts\n"
+                "`!thread <topic>` - draft a 4-6 tweet thread\n"
+                "`!hook <topic>` - 5 opening-line options\n"
+                "`!roast <your tweet>` - honest critique before you post\n"
             )
             await ctx.send(msg)
 
