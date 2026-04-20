@@ -2889,23 +2889,119 @@ def start_command_listener():
         async def testnews(ctx):
             await fire_job(ctx, run_news_job, "Macro News")
 
-        @bot.command(name="draftreply")
+       @bot.command(name="draftreply")
         async def draftreply(ctx, *, tweet: str = None):
-            # Grab raw message content to handle multi-line tweets
             raw_content = ctx.message.content
             if raw_content.startswith("!draftreply"):
                 tweet = raw_content[len("!draftreply"):].strip()
-
-            # Empty or too short
             if not tweet or len(tweet.strip()) < 10:
                 await ctx.send("Usage: !draftreply <paste the tweet text>")
                 return
-
-            # Reject URLs
             tweet_lower = tweet.strip().lower()
             if tweet_lower.startswith("http://") or tweet_lower.startswith("https://") or tweet_lower.startswith("www.") or tweet_lower.startswith("x.com/") or tweet_lower.startswith("twitter.com/"):
-                await ctx.send("That looks like a URL. I cannot read tweets from links. Paste the actual tweet text instead.")
+                await ctx.send("That looks like a URL. Paste the actual tweet text instead.")
                 return
+            await ctx.send("Drafting 3 replies...")
+            try:
+                drafts = await asyncio.get_event_loop().run_in_executor(None, generate_reply_drafts, tweet)
+                preview = tweet if len(tweet) < 280 else tweet[:277] + "..."
+                response = "**Source tweet:**\n> " + preview + "\n\n**Drafts:**\n" + drafts + "\n\n_Pick one, edit, post._"
+                if len(response) <= 2000:
+                    await ctx.send(response)
+                else:
+                    await ctx.send(response[:1997] + "...")
+                    await ctx.send(response[1997:])
+            except Exception as e:
+                await ctx.send("Draft error: " + str(e)[:500])
+                print("[COMMANDS] draftreply error: " + str(e))
+
+        @bot.command(name="tweet")
+        async def tweetcmd(ctx, *, topic: str = None):
+            raw_content = ctx.message.content
+            if raw_content.startswith("!tweet"):
+                topic = raw_content[len("!tweet"):].strip()
+            if not topic or len(topic.strip()) < 5:
+                await ctx.send("Usage: !tweet <what you want to tweet about>\nExample: !tweet NQ swept Asia high and ripped 200pts")
+                return
+            await ctx.send("Drafting 3 tweet options...")
+            try:
+                drafts = await asyncio.get_event_loop().run_in_executor(None, generate_tweet_drafts, topic)
+                preview = topic if len(topic) < 280 else topic[:277] + "..."
+                response = "**Topic:** " + preview + "\n\n**Drafts:**\n" + drafts + "\n\n_Pick one, edit, post._"
+                if len(response) <= 2000:
+                    await ctx.send(response)
+                else:
+                    await ctx.send(response[:1997] + "...")
+                    await ctx.send(response[1997:])
+            except Exception as e:
+                await ctx.send("Tweet error: " + str(e)[:500])
+                print("[COMMANDS] tweet error: " + str(e))
+
+        @bot.command(name="thread")
+        async def threadcmd(ctx, *, topic: str = None):
+            raw_content = ctx.message.content
+            if raw_content.startswith("!thread"):
+                topic = raw_content[len("!thread"):].strip()
+            if not topic or len(topic.strip()) < 5:
+                await ctx.send("Usage: !thread <thread topic>\nExample: !thread how iFVGs form and why they matter")
+                return
+            await ctx.send("Drafting a thread... (this takes a few seconds)")
+            try:
+                thread = await asyncio.get_event_loop().run_in_executor(None, generate_thread, topic)
+                response = "**Thread topic:** " + topic + "\n\n" + thread + "\n\n_Copy each tweet separately. Post one at a time, reply-chain them on X._"
+                if len(response) <= 2000:
+                    await ctx.send(response)
+                else:
+                    # Split across messages
+                    chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
+                    for chunk in chunks:
+                        await ctx.send(chunk)
+            except Exception as e:
+                await ctx.send("Thread error: " + str(e)[:500])
+                print("[COMMANDS] thread error: " + str(e))
+
+        @bot.command(name="hook")
+        async def hookcmd(ctx, *, topic: str = None):
+            raw_content = ctx.message.content
+            if raw_content.startswith("!hook"):
+                topic = raw_content[len("!hook"):].strip()
+            if not topic or len(topic.strip()) < 5:
+                await ctx.send("Usage: !hook <what the tweet/thread is about>\nExample: !hook losing 3 accounts before profitability")
+                return
+            await ctx.send("Drafting 5 hook options...")
+            try:
+                hooks = await asyncio.get_event_loop().run_in_executor(None, generate_hooks, topic)
+                response = "**Hook topic:** " + topic + "\n\n**Options:**\n" + hooks + "\n\n_Pick the strongest. Build the tweet/thread from there._"
+                if len(response) <= 2000:
+                    await ctx.send(response)
+                else:
+                    await ctx.send(response[:1997] + "...")
+                    await ctx.send(response[1997:])
+            except Exception as e:
+                await ctx.send("Hook error: " + str(e)[:500])
+                print("[COMMANDS] hook error: " + str(e))
+
+        @bot.command(name="roast")
+        async def roastcmd(ctx, *, tweet: str = None):
+            raw_content = ctx.message.content
+            if raw_content.startswith("!roast"):
+                tweet = raw_content[len("!roast"):].strip()
+            if not tweet or len(tweet.strip()) < 10:
+                await ctx.send("Usage: !roast <the tweet you're about to post>\nExample: !roast NQ bullish above 26800, targeting buyside liquidity")
+                return
+            await ctx.send("Roasting...")
+            try:
+                roast = await asyncio.get_event_loop().run_in_executor(None, generate_roast, tweet)
+                preview = tweet if len(tweet) < 280 else tweet[:277] + "..."
+                response = "**Your tweet:**\n> " + preview + "\n\n" + roast
+                if len(response) <= 2000:
+                    await ctx.send(response)
+                else:
+                    await ctx.send(response[:1997] + "...")
+                    await ctx.send(response[1997:])
+            except Exception as e:
+                await ctx.send("Roast error: " + str(e)[:500])
+                print("[COMMANDS] roast error: " + str(e))
 
             await ctx.send("Drafting 3 replies...")
             try:
