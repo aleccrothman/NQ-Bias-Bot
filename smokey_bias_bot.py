@@ -2937,13 +2937,13 @@ def start_command_listener():
                 await ctx.send("Tweet error: " + str(e)[:500])
                 print("[COMMANDS] tweet error: " + str(e))
 
-        @bot.command(name="thread")
+       @bot.command(name="makethread")
         async def threadcmd(ctx, *, topic: str = None):
             raw_content = ctx.message.content
             if raw_content.startswith("!thread"):
                 topic = raw_content[len("!thread"):].strip()
             if not topic or len(topic.strip()) < 5:
-                await ctx.send("Usage: !thread <thread topic>\nExample: !thread how iFVGs form and why they matter")
+                await ctx.send("Usage: !makethread <thread topic>\nExample: !makethread how iFVGs form and why they matter")
                 return
             await ctx.send("Drafting a thread... (this takes a few seconds)")
             try:
