@@ -2811,7 +2811,194 @@ FORMAT:
 def generate_roast(tweet_text):
     """Critique a draft tweet."""
     return _call_groq(SMOKEY_ROAST_PROMPT, "Tweet to critique:\n\n" + tweet_text, max_tokens=800, temperature=0.5)
-  
+
+
+# ============================================================================
+# !bias - Morning bias tweet generator
+# ============================================================================
+SMOKEY_BIAS_PROMPT = """You are Smokey (@SmokeyNQ), an NQ futures trader using
+ICT methodology. You post a pre-market bias call on X/Twitter before NY Open.
+
+Your voice:
+- Direct, specific, confident but not arrogant
+- Uses ICT terminology naturally (Midnight Open/MO, iFVG, liquidity sweeps, PDH/PDL)
+- Short and punchy - NQ traders respect brevity
+- Never uses hashtags, never uses emojis unless they genuinely fit, never uses guru language
+- Writes like someone who actually trades, not like someone selling a course
+
+You will be given bias data for today's NY Open session. Generate THREE distinct
+tweet drafts:
+
+1. ANALYTICAL - Level-based, clinical. States the bias, key levels, and target.
+   Example tone: "NQ bullish above 26,800. MO at 26,750. Targeting sweep of overnight high at 27,000."
+
+2. CONVICTION - First-person, confident. Shares the read with personality.
+   Example tone: "Long bias today. iFVG held on the reclaim, MO is my line in the sand. If we tag 27K I'm done."
+
+3. CONTRARIAN-HOOK - Opens with a reply-bait take, then explains.
+   Example tone: "Everyone's bearish on this gap-down but MO says otherwise. Looking long above 26,750, targeting the overnight high."
+
+Rules for ALL three drafts:
+- Under 280 characters
+- Include the specific levels provided
+- No hashtags, no emojis, no rocket/chart emojis
+- Natural line breaks for readability
+- Sound like a trader, not a guru
+
+Output format (strict):
+1. [analytical draft]
+
+2. [conviction draft]
+
+3. [contrarian-hook draft]
+
+No preamble, no explanation, no labels beyond the numbers.
+"""
+
+
+def generate_bias_tweets(bias_data):
+    """3 morning bias tweet options from structured bias data."""
+    return _call_groq(SMOKEY_BIAS_PROMPT, "Today's bias data:\n\n" + bias_data, max_tokens=900, temperature=0.8)
+
+
+# ============================================================================
+# !recap - Post-trade recap tweet generator
+# ============================================================================
+SMOKEY_RECAP_PROMPT = """You are Smokey (@SmokeyNQ), an NQ futures trader posting
+an end-of-session trade recap on X/Twitter.
+
+Your voice:
+- Honest and reflective, not braggy
+- Shares wins AND losses with equal weight - this is your trust-building signal
+- Uses ICT terminology naturally (MO, iFVG, sweeps)
+- Never celebrates with emojis, never uses "LFG" or guru language
+- On losses: owns them without being dramatic, often includes "what I'd do differently"
+- On wins: states them plainly, often tied to a specific setup that worked
+
+You will be given structured recap data: wins, losses, total P&L, and optional notes.
+Generate THREE distinct tweet drafts:
+
+1. STRAIGHT RECAP - Clean summary of the day's trades and result. No fluff.
+   Example: "2 trades. 1W 1L. +$420 on the day. Short off the 9:45 sweep worked clean, long at MO retest got stopped before the move. Back at it Monday."
+
+2. LESSON-FOCUSED - Leads with what was learned or what you'd do differently. Honest.
+   Example: "Green day but should've sized up the short - had full conviction and took half risk. Lesson: when the read is clean, trust it. +$420."
+
+3. PROCESS-FOCUSED - Frames the day in terms of discipline and process over outcome.
+   Example: "Followed the plan. 1W 1L, +$420. The long stop-out was a valid setup that didn't work, not a mistake. That's the game. Onto Monday."
+
+Rules for ALL three drafts:
+- Under 280 characters
+- If it was a losing day, be honest about it - don't spin it
+- Always include the P&L number exactly as given
+- No hashtags, no emojis, no guru language
+- Natural, reflective, trader-voice
+- Reference specific setups from the notes when provided
+
+Output format (strict):
+1. [straight recap]
+
+2. [lesson-focused]
+
+3. [process-focused]
+
+No preamble, no explanation, no labels beyond the numbers.
+"""
+
+
+def generate_recap_tweets(recap_data):
+    """3 trade recap tweet options from structured trade data."""
+    return _call_groq(SMOKEY_RECAP_PROMPT, "Today's trade data:\n\n" + recap_data, max_tokens=900, temperature=0.75)
+
+
+# ============================================================================
+# !replybait - Reply-bait post generator
+# ============================================================================
+SMOKEY_REPLYBAIT_PROMPT = """You are Smokey (@SmokeyNQ), an NQ futures trader on
+X/Twitter. Your task is to generate posts designed to spark conversation and
+replies - not to flex results, but to get your audience to engage and share
+their own views.
+
+Your voice:
+- Confident but curious, never preachy
+- Writes like a trader who has opinions, not a content creator chasing engagement
+- Uses ICT terminology naturally when relevant
+- Never uses clickbait hooks like "Thread" or "Read this before you trade"
+- No emojis unless they genuinely fit the sentiment
+- Keeps posts short (under 280 chars) - the shorter and sharper, the more replies
+
+You will optionally be given a topic. Generate FIVE distinct reply-bait post
+options, one from each category below. Each post should feel natural and
+opinionated, not manufactured.
+
+1. UNPOPULAR OPINION - States a take that goes against the common wisdom.
+   Example: "Unpopular opinion: most people obsessing over iFVGs would make more money just trading the MO reaction and closing by 10:30."
+
+2. GENUINE QUESTION - Asks the audience something you actually want to know.
+   Example: "How many of you actually journal every trade vs just the ones that went wrong? Be honest."
+
+3. CONTRARIAN OBSERVATION - Points out something most traders do wrong or miss.
+   Example: "The traders I see failing evals aren't bad at reading charts. They're bad at doing nothing when there's no setup."
+
+4. PRO-VS-BEGINNER CONTRAST - Compares what experienced traders do vs beginners.
+   Example: "Beginners check their P&L every 30 seconds. Pros check it at the end of the session. The difference is everything."
+
+5. INDUSTRY CRITIQUE - Calls out something broken or misleading in the space.
+   Example: "Half the 'prop firm payout' screenshots on this app are from the smallest allocation because the big ones are still in drawdown. Nobody posts those."
+
+Rules for ALL five posts:
+- Under 280 characters each
+- Must feel authentic, not designed-to-engage
+- No hashtags, minimal/zero emojis
+- No clickbait openings ("Listen...", "Hot take:", etc. - the content IS the hook)
+- If a topic is given, make the posts relevant to that topic; if no topic, cover
+  NQ/ICT/prop-firm/trading-psychology territory broadly
+
+Output format (strict):
+1. [unpopular opinion]
+
+2. [genuine question]
+
+3. [contrarian observation]
+
+4. [pro-vs-beginner contrast]
+
+5. [industry critique]
+
+No preamble, no labels beyond the numbers.
+"""
+
+
+def generate_replybait_posts(topic):
+    """5 reply-bait post options, optionally focused on a topic."""
+    if topic and topic.strip():
+        user_msg = "Topic: " + topic.strip() + "\n\nGenerate the 5 reply-bait posts as specified."
+    else:
+        user_msg = "No specific topic - generate 5 reply-bait posts covering NQ trading, ICT methodology, prop firms, and trading psychology."
+    return _call_groq(SMOKEY_REPLYBAIT_PROMPT, user_msg, max_tokens=1200, temperature=0.9)
+
+
+# ============================================================================
+# Scheduled morning bias reminder (weekdays 8:30am ET = 12:30 UTC)
+# ============================================================================
+def run_bias_reminder():
+    """Post a reminder in #x-drafts every weekday morning to run !bias."""
+    if not DISCORD_WEBHOOK_XDRAFTS:
+        print("[bias_reminder] DISCORD_WEBHOOK_XDRAFTS not set - skipping reminder")
+        return
+    try:
+        reminder_msg = (
+            "**Morning bias time**\n\n"
+            "NY Open in 30 minutes. Run `!bias` with today's read:\n\n"
+            "`!bias direction:long mo:XXXXX ifvg:XXXXX target:XXXXX notes:your read`\n\n"
+            "Post the draft you pick to X before 9am ET for max engagement."
+        )
+        requests.post(DISCORD_WEBHOOK_XDRAFTS, json={"content": reminder_msg}, timeout=10)
+        print("[bias_reminder] Morning reminder sent")
+    except Exception as e:
+        print("[bias_reminder] Error: " + str(e))
+
+
 # If DISCORD_BOT_TOKEN is set, listen for test commands in Discord.
 # Commands: !testrecap, !testbotw, !testbias, !testnyo, !testeod, !testnews
 # Safe: all test commands bypass `fired_today` so you can re-run the same day.
@@ -3017,6 +3204,77 @@ def start_command_listener():
                 await ctx.send("Draft error: " + str(e)[:500])
                 print("[COMMANDS] draftreply error: " + str(e))
 
+        @bot.command(name="bias")
+        async def biascmd(ctx, *, args: str = None):
+            raw_content = ctx.message.content
+            if raw_content.startswith("!bias"):
+                args = raw_content[len("!bias"):].strip()
+            if not args or len(args.strip()) < 5:
+                await ctx.send(
+                    "**Usage:** `!bias direction:long mo:26800 ifvg:26750 target:27000 notes:your read`\n\n"
+                    "**Example:**\n"
+                    "`!bias direction:long mo:26750 ifvg:26720 target:27000 notes:sweep of overnight low then reclaim of MO`\n\n"
+                    "All fields optional. More detail = better drafts."
+                )
+                return
+            await ctx.send("Drafting 3 bias options...")
+            try:
+                drafts = await asyncio.get_event_loop().run_in_executor(None, generate_bias_tweets, args)
+                response = "**Bias input:** " + args + "\n\n**Drafts:**\n" + drafts + "\n\n_Pick one, post before 9am ET._"
+                if len(response) <= 2000:
+                    await ctx.send(response)
+                else:
+                    await ctx.send(response[:1997] + "...")
+                    await ctx.send(response[1997:])
+            except Exception as e:
+                await ctx.send("Bias error: " + str(e)[:500])
+                print("[COMMANDS] bias error: " + str(e))
+
+        @bot.command(name="recap")
+        async def recapcmd(ctx, *, args: str = None):
+            raw_content = ctx.message.content
+            if raw_content.startswith("!recap"):
+                args = raw_content[len("!recap"):].strip()
+            if not args or len(args.strip()) < 5:
+                await ctx.send(
+                    "**Usage:** `!recap wins:1 losses:1 pnl:+420 notes:short off 9:45 sweep worked`\n\n"
+                    "**Example:**\n"
+                    "`!recap wins:2 losses:0 pnl:+850 notes:both longs from iFVG reclaim, clean day`\n\n"
+                    "Fields: `wins`, `losses`, `pnl`, `notes` (all optional but more = better)."
+                )
+                return
+            await ctx.send("Drafting 3 recap options...")
+            try:
+                drafts = await asyncio.get_event_loop().run_in_executor(None, generate_recap_tweets, args)
+                response = "**Trade data:** " + args + "\n\n**Drafts:**\n" + drafts + "\n\n_Attach your P&L screenshot when you post._"
+                if len(response) <= 2000:
+                    await ctx.send(response)
+                else:
+                    await ctx.send(response[:1997] + "...")
+                    await ctx.send(response[1997:])
+            except Exception as e:
+                await ctx.send("Recap error: " + str(e)[:500])
+                print("[COMMANDS] recap error: " + str(e))
+
+        @bot.command(name="replybait")
+        async def replybaitcmd(ctx, *, topic: str = None):
+            raw_content = ctx.message.content
+            if raw_content.startswith("!replybait"):
+                topic = raw_content[len("!replybait"):].strip()
+            await ctx.send("Drafting 5 reply-bait options" + (" on: " + topic if topic else "") + "...")
+            try:
+                posts = await asyncio.get_event_loop().run_in_executor(None, generate_replybait_posts, topic or "")
+                header = "**Topic:** " + topic + "\n\n" if topic else ""
+                response = header + "**Options:**\n" + posts + "\n\n_Pick the one that feels most like something you'd actually say._"
+                if len(response) <= 2000:
+                    await ctx.send(response)
+                else:
+                    await ctx.send(response[:1997] + "...")
+                    await ctx.send(response[1997:])
+            except Exception as e:
+                await ctx.send("Replybait error: " + str(e)[:500])
+                print("[COMMANDS] replybait error: " + str(e))
+
         @bot.command(name="smokeyhelp")
         async def smokeyhelp(ctx):
             msg = (
@@ -3034,6 +3292,9 @@ def start_command_listener():
                 "`!makethread <topic>` - draft a 4-6 tweet thread\n"
                 "`!hook <topic>` - 5 opening-line options\n"
                 "`!roast <your tweet>` - honest critique before you post\n"
+                "`!bias <direction:long mo:X ifvg:Y target:Z notes:...>` - 3 morning bias drafts\n"
+                "`!recap <wins:N losses:N pnl:+X notes:...>` - 3 end-of-day recap drafts\n"
+                "`!replybait [optional topic]` - 5 engagement-focused post ideas\n"
             )
             await ctx.send(msg)
 
@@ -3094,6 +3355,7 @@ def main():
     fired_today = set()  # in-memory guard against double-firing
     JOBS = [
         (11,  0,  "news",    run_news_job,          True),
+        (12, 30,  "biasrmd", run_bias_reminder,     True),  # 8:30am ET weekday reminder to run !bias
         (12, 30,  "morning", run_morning_bias,       True),
         (13,  0,  "nyo",     run_nyo_update,         True),
         (20,  0,  "eod",     run_eod_score,          True),
