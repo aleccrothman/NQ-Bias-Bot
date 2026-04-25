@@ -1955,7 +1955,7 @@ def run_morning_bias():
         # X/Twitter
         tweet = build_bias_tweet(current_price, midnight_open, asia_high, asia_low,
                                  london_high, london_low, bias, ifvgs, get_vix())
-        send_tweet(tweet)
+        # send_tweet(tweet)
 
     except Exception as e:
         try:
@@ -2056,7 +2056,7 @@ def run_nyo_update():
 
         # X/Twitter
         nyo_tweet = build_nyo_tweet(current_price, bias, today_state["midnight_open"], nyo_ifvgs)
-        send_tweet(nyo_tweet)
+        # send_tweet(nyo_tweet)
     except Exception as e:
         try:
             send_telegram_text("<b>NYO Update Error:</b> " + str(e))
@@ -2163,7 +2163,7 @@ def run_eod_score():
 
         # X/Twitter
         eod_tweet = build_eod_tweet(direction, result_type, current_price, mo, price_diff, winrate_data)
-        send_tweet(eod_tweet)
+        # send_tweet(eod_tweet)
     except Exception as e:
         try:
             send_telegram_text("<b>EOD Score Error:</b> " + str(e))
