@@ -3444,44 +3444,34 @@ def start_command_listener():
 
         @bot.command(name="smokeyhelp")
         async def smokeyhelp(ctx):
-            if owner_only(ctx):
-                msg = (
-                    "**Smokey Bias Bot — Owner Commands**\n\n"
-                    "**Bot triggers**\n"
-                    "`!testbias` - fire morning bias now\n"
-                    "`!testnyo` - fire NYO update now\n"
-                    "`!testeod` - fire EOD score now\n"
-                    "`!testnews` - fire macro news now\n"
-                    "`!testbotw` - fire Bias of the Week\n"
-                    "`!testrecap` - fire Weekly Recap\n\n"
-                    "**Trade alerts (posts to #smokey)**\n"
-                    "`!entry <details>` - post entry alert\n"
-                    "`!trim <details>` - post trim alert\n"
-                    "`!exit <details>` - post exit alert\n"
-                    "`!comment <text>` - post market commentary\n"
-                    "`!win <text>` - post milestone/achievement\n\n"
-                    "**Tweet helpers**\n"
-                    "`!draftreply <tweet text>` - 3 reply options\n"
-                    "`!tweet <topic>` - 3 original tweet drafts\n"
-                    "`!makethread <topic>` - draft a tweet thread\n"
-                    "`!hook <topic>` - 5 opening-line options\n"
-                    "`!roast <your tweet>` - honest critique\n"
-                    "`!bias <direction:long mo:X ifvg:Y target:Z notes:...>` - 3 bias drafts\n"
-                    "`!recap <wins:N losses:N pnl:+X notes:...>` - 3 recap drafts\n"
-                    "`!replybait [optional topic]` - 5 engagement ideas\n"
-                )
-            else:
-                msg = (
-                    "**Smokey Bias Bot Commands**\n\n"
-                    "**Ask the AI**\n"
-                    "`!ask <question>` - ask the SmokeyNQ AI any trading question\n\n"
-                    "**What the bot posts automatically**\n"
-                    "📊 Daily NQ bias — every morning before NY open\n"
-                    "🔔 NYO update — 9 AM ET, bias check\n"
-                    "📋 EOD score — 4 PM ET, win/loss/chop\n"
-                    "🗞️ Macro news — 7 AM ET, high impact events\n\n"
-                    "**Need help?** Post in `#questions`"
-                )
+            if not owner_only(ctx):
+                await ctx.message.delete()
+                return
+            msg = (
+                "**Smokey Bias Bot — Owner Commands**\n\n"
+                "**Bot triggers**\n"
+                "`!testbias` - fire morning bias now\n"
+                "`!testnyo` - fire NYO update now\n"
+                "`!testeod` - fire EOD score now\n"
+                "`!testnews` - fire macro news now\n"
+                "`!testbotw` - fire Bias of the Week\n"
+                "`!testrecap` - fire Weekly Recap\n\n"
+                "**Trade alerts (posts to #smokey)**\n"
+                "`!entry <details>` - post entry alert\n"
+                "`!trim <details>` - post trim alert\n"
+                "`!exit <details>` - post exit alert\n"
+                "`!comment <text>` - post market commentary\n"
+                "`!win <text>` - post milestone/achievement\n\n"
+                "**Tweet helpers**\n"
+                "`!draftreply <tweet text>` - 3 reply options\n"
+                "`!tweet <topic>` - 3 original tweet drafts\n"
+                "`!makethread <topic>` - draft a tweet thread\n"
+                "`!hook <topic>` - 5 opening-line options\n"
+                "`!roast <your tweet>` - honest critique\n"
+                "`!bias <direction:long mo:X ifvg:Y target:Z notes:...>` - 3 bias drafts\n"
+                "`!recap <wins:N losses:N pnl:+X notes:...>` - 3 recap drafts\n"
+                "`!replybait [optional topic]` - 5 engagement ideas\n"
+            )
             await ctx.send(msg)
 
         try:
