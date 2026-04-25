@@ -2224,7 +2224,7 @@ def build_discord_weekend_recap(week_wins, week_losses, week_chops, week_streak,
         week_val += "\n*No trades recorded this week*"
 
     embed = {
-        "title": "\U0001f4c5  Weekly Recap  |  " + date_str,
+        "title": "\U0001f4c5  Weekly Recap  |  " + week_range_str,
         "description": "Here's how the bias performed this week, and what to watch next.",
         "color": 0x5865f2,  # Discord blurple
         "fields": [
@@ -2258,7 +2258,7 @@ def run_weekend_recap():
         date_str = now_et.strftime("%a %b %d")
 
         msg  = "--------------------\n"
-        msg += "📅 <b>Weekly Recap | " + date_str + "</b>\n"
+        msg += "📅 <b>Weekly Recap | " + week_range_str + "</b>\n"
         msg += "--------------------\n"
         msg += "<b>This Week:</b>\n"
         msg += str(week_wins) + "W  " + str(week_losses) + "L  " + str(week_chops) + "C\n"
@@ -2319,9 +2319,11 @@ def build_weekly_performance_post():
     week_streak = "".join(r["result"] for r in week_history)
 
     date_str = datetime.now(ET).strftime("%b %d, %Y")
+    week_range_str = _week_range_str()
+    week_range_str = _week_range_str()
 
     msg  = "📊 <b>Smokey Bias - Weekly Performance</b>\n"
-    msg += "Week ending " + date_str + "\n"
+    msg += "Week of " + week_range_str + "\n"
     msg += "--------------------\n"
     msg += "<b>This Week:</b>  " + str(week_wins) + "W  " + str(week_losses) + "L  " + str(week_chops) + "C\n"
     if week_streak:
@@ -2430,7 +2432,7 @@ def build_discord_bias_of_week(wins_this_week, week_wins, week_losses, week_chop
     week_line = "`" + str(week_wins) + "W` `" + str(week_losses) + "L` `" + str(week_chops) + "C`"
 
     embed = {
-        "title": "\U0001f3c6  Bias of the Week  |  " + date_str,
+        "title": "\U0001f3c6  Bias of the Week  |  " + week_range_str,
         "description": "**" + headline + "**",
         "color": color,
         "fields": [
@@ -2443,6 +2445,19 @@ def build_discord_bias_of_week(wins_this_week, week_wins, week_losses, week_chop
     return embed
 
 
+def _week_range_str(now_et=None):
+    """Return Mon-Fri date range string for current week."""
+    from datetime import timedelta
+    if now_et is None:
+        now_et = datetime.now(ET)
+    # Find Monday of current week
+    days_since_monday = now_et.weekday()
+    monday = now_et - timedelta(days=days_since_monday)
+    friday = monday + timedelta(days=4)
+    if monday.month == friday.month:
+        return monday.strftime("%b %d") + " – " + friday.strftime("%d")
+    return monday.strftime("%b %d") + " – " + friday.strftime("%b %d")
+
 def run_trade_of_week():
     """Friday EOD - highlight the best bias delivery of the week."""
     print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running trade of the week...")
@@ -2452,7 +2467,8 @@ def run_trade_of_week():
         wins_this_week = [r for r in week_history if r["result"] == "W"]
 
         date_str = datetime.now(ET).strftime("%b %d")
-        msg  = "🏆 <b>Bias of the Week | " + date_str + "</b>\n"
+    week_range_str = _week_range_str()
+        msg  = "🏆 <b>Bias of the Week | " + week_range_str + "</b>\n"
         msg += "--------------------\n"
 
         if not wins_this_week:
