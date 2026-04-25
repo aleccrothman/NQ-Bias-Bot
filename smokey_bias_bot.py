@@ -2255,7 +2255,7 @@ def run_weekend_recap():
         week_streak = "".join(r["result"] for r in week_history) if week_history else ""
 
         now_et   = datetime.now(ET)
-        date_str = now_et.strftime("%a %b %d")
+        week_range_str = _week_range_str()
 
         msg  = "--------------------\n"
         msg += "📅 <b>Weekly Recap | " + week_range_str + "</b>\n"
@@ -2318,8 +2318,6 @@ def build_weekly_performance_post():
     week_chops  = sum(1 for r in week_history if r["result"] == "C")
     week_streak = "".join(r["result"] for r in week_history)
 
-    date_str = datetime.now(ET).strftime("%b %d, %Y")
-    week_range_str = _week_range_str()
     week_range_str = _week_range_str()
 
     msg  = "📊 <b>Smokey Bias - Weekly Performance</b>\n"
@@ -2445,18 +2443,16 @@ def build_discord_bias_of_week(wins_this_week, week_wins, week_losses, week_chop
     return embed
 
 
-def _week_range_str(now_et=None):
-    """Return Mon-Fri date range string for current week."""
+def _week_range_str():
+    """Return Mon-Fri date range string for current week e.g. Apr 21 - 25"""
     from datetime import timedelta
-    if now_et is None:
-        now_et = datetime.now(ET)
-    # Find Monday of current week
+    now_et = datetime.now(ET)
     days_since_monday = now_et.weekday()
     monday = now_et - timedelta(days=days_since_monday)
     friday = monday + timedelta(days=4)
     if monday.month == friday.month:
-        return monday.strftime("%b %d") + " – " + friday.strftime("%d")
-    return monday.strftime("%b %d") + " – " + friday.strftime("%b %d")
+        return monday.strftime("%b %d") + " - " + friday.strftime("%d")
+    return monday.strftime("%b %d") + " - " + friday.strftime("%b %d")
 
 def run_trade_of_week():
     """Friday EOD - highlight the best bias delivery of the week."""
@@ -2466,8 +2462,7 @@ def run_trade_of_week():
         week_history = data["history"][-5:] if data["history"] else []
         wins_this_week = [r for r in week_history if r["result"] == "W"]
 
-        date_str = datetime.now(ET).strftime("%b %d")
-    week_range_str = _week_range_str()
+        week_range_str = _week_range_str()
         msg  = "🏆 <b>Bias of the Week | " + week_range_str + "</b>\n"
         msg += "--------------------\n"
 
