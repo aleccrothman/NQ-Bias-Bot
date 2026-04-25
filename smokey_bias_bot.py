@@ -50,6 +50,7 @@ DISCORD_WEBHOOK_BIAS  = os.getenv("DISCORD_WEBHOOK_BIAS",  "")
 DISCORD_WEBHOOK_NYO   = os.getenv("DISCORD_WEBHOOK_NYO",   "")
 DISCORD_WEBHOOK_EOD   = os.getenv("DISCORD_WEBHOOK_EOD",   "https://discord.com/api/webhooks/1488613489424470036/l2IZxV6gXzVD5HOY5UyHjQw_te38V-vXIuzwagz6v2gy9WNmPtG4qeynD2mLw9fGhveW")
 DISCORD_WEBHOOK_XDRAFTS = os.getenv("DISCORD_WEBHOOK_XDRAFTS", "")
+DISCORD_WEBHOOK_SMOKEY  = os.getenv("DISCORD_WEBHOOK_SMOKEY",  "")
 
 # Optional: if set, bot listens for !test* commands in Discord
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
@@ -1955,7 +1956,7 @@ def run_morning_bias():
         # X/Twitter
         tweet = build_bias_tweet(current_price, midnight_open, asia_high, asia_low,
                                  london_high, london_low, bias, ifvgs, get_vix())
-        # send_tweet(tweet)
+        send_tweet(tweet)
 
     except Exception as e:
         try:
@@ -2056,7 +2057,7 @@ def run_nyo_update():
 
         # X/Twitter
         nyo_tweet = build_nyo_tweet(current_price, bias, today_state["midnight_open"], nyo_ifvgs)
-        # send_tweet(nyo_tweet)
+        send_tweet(nyo_tweet)
     except Exception as e:
         try:
             send_telegram_text("<b>NYO Update Error:</b> " + str(e))
@@ -2163,7 +2164,7 @@ def run_eod_score():
 
         # X/Twitter
         eod_tweet = build_eod_tweet(direction, result_type, current_price, mo, price_diff, winrate_data)
-        # send_tweet(eod_tweet)
+        send_tweet(eod_tweet)
     except Exception as e:
         try:
             send_telegram_text("<b>EOD Score Error:</b> " + str(e))
@@ -3275,6 +3276,85 @@ def start_command_listener():
                 await ctx.send("Replybait error: " + str(e)[:500])
                 print("[COMMANDS] replybait error: " + str(e))
 
+
+        def send_alert_embed(webhook_url, title, color, description, ctx_author):
+            """Send a formatted trade alert embed to a Discord webhook."""
+            if not webhook_url:
+                return False
+            now = datetime.now(ET).strftime("%m/%d/%y • %I:%M %p ET")
+            embed = {
+                "embeds": [{
+                    "color": color,
+                    "fields": [
+                        {"name": title, "value": description, "inline": False},
+                    ],
+                    "footer": {
+                        "text": now + "\nSmokey Alerts @ SmokeyNQ\nNot financial advice"
+                    }
+                }]
+            }
+            try:
+                requests.post(webhook_url, json=embed, timeout=10)
+                return True
+            except Exception as e:
+                print("  -> Alert embed error: " + str(e))
+                return False
+
+        @bot.command(name="entry")
+        async def alert_entry(ctx, *, text: str = ""):
+            """!entry <details> — post a trade entry alert to #smokey"""
+            if not text:
+                await ctx.send("Usage: `!entry NQ long 25280, stop 25255, target 25430`")
+                return
+            ok = send_alert_embed(DISCORD_WEBHOOK_SMOKEY, "ENTRY", 0x57f287, text, ctx.author)
+            await ctx.message.delete()
+            if not ok:
+                await ctx.send("DISCORD_WEBHOOK_SMOKEY not set in Railway.")
+
+        @bot.command(name="trim")
+        async def alert_trim(ctx, *, text: str = ""):
+            """!trim <details> — post a trim/partial exit alert to #smokey"""
+            if not text:
+                await ctx.send("Usage: `!trim +75pts, moving stop to BE`")
+                return
+            ok = send_alert_embed(DISCORD_WEBHOOK_SMOKEY, "TRIM", 0xfee75c, text, ctx.author)
+            await ctx.message.delete()
+            if not ok:
+                await ctx.send("DISCORD_WEBHOOK_SMOKEY not set in Railway.")
+
+        @bot.command(name="exit")
+        async def alert_exit(ctx, *, text: str = ""):
+            """!exit <details> — post a full exit alert to #smokey"""
+            if not text:
+                await ctx.send("Usage: `!exit full exit at 25418, +138pts`")
+                return
+            ok = send_alert_embed(DISCORD_WEBHOOK_SMOKEY, "EXIT", 0xed4245, text, ctx.author)
+            await ctx.message.delete()
+            if not ok:
+                await ctx.send("DISCORD_WEBHOOK_SMOKEY not set in Railway.")
+
+        @bot.command(name="comment")
+        async def alert_comment(ctx, *, text: str = ""):
+            """!comment <text> — post market commentary to #smokey"""
+            if not text:
+                await ctx.send("Usage: `!comment clean sweep of Asia Low into NY open`")
+                return
+            ok = send_alert_embed(DISCORD_WEBHOOK_SMOKEY, "COMMENTARY", 0x949ba4, text, ctx.author)
+            await ctx.message.delete()
+            if not ok:
+                await ctx.send("DISCORD_WEBHOOK_SMOKEY not set in Railway.")
+
+        @bot.command(name="win")
+        async def alert_win(ctx, *, text: str = ""):
+            """!win <text> — post a milestone or achievement to #smokey"""
+            if not text:
+                await ctx.send("Usage: `!win passed the LucidPro 50K eval`")
+                return
+            ok = send_alert_embed(DISCORD_WEBHOOK_SMOKEY, "WIN", 0xf1c40f, text, ctx.author)
+            await ctx.message.delete()
+            if not ok:
+                await ctx.send("DISCORD_WEBHOOK_SMOKEY not set in Railway.")
+
         @bot.command(name="smokeyhelp")
         async def smokeyhelp(ctx):
             msg = (
@@ -3286,6 +3366,12 @@ def start_command_listener():
                 "`!testnews` - fire macro news now\n"
                 "`!testbotw` - fire Bias of the Week\n"
                 "`!testrecap` - fire Weekly Recap\n\n"
+                "**Trade alerts (posts to #smokey)**\n"
+                "`!entry <details>` - post entry alert\n"
+                "`!trim <details>` - post trim alert\n"
+                "`!exit <details>` - post exit alert\n"
+                "`!comment <text>` - post market commentary\n"
+                "`!win <text>` - post milestone/achievement\n\n"
                 "**Tweet helpers**\n"
                 "`!draftreply <tweet text>` - 3 reply options to someone else's tweet\n"
                 "`!tweet <topic>` - 3 original tweet drafts\n"
