@@ -2720,7 +2720,8 @@ STRUCTURE:
 - Tweet 7-8 (Payoff): A real takeaway or honest conclusion. Something that sticks. No "follow me for more" — just end on something worth saying.
 
 HARD RULES:
-- Each tweet under 270 chars.
+- Each tweet can be up to 400 chars. Use the space — don't cut short just to be brief.
+- Each body tweet must include at least one specific detail: a level, a concept (iFVG, MO, sweep, displacement), a result in pts, or a concrete mistake. No vague statements.
 - No hashtags. No "1/" style numbering.
 - No filler tweets. Every tweet has to earn its place.
 - No "let's dive in", "here we go", "this is important", "thread below".
@@ -2757,7 +2758,7 @@ FORMAT, nothing else:
 
 def generate_thread(topic):
     """A 4-6 tweet thread on a topic."""
-    return _call_groq(SMOKEY_THREAD_PROMPT, "Thread topic:\n\n" + topic, max_tokens=1500)
+    return _call_groq(SMOKEY_THREAD_PROMPT, "Thread topic:\n\n" + topic, max_tokens=2500)
 
 
 SMOKEY_HOOK_PROMPT = """You are Smokey (@SmokeyNQ), an NQ futures trader. You
