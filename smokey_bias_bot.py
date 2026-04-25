@@ -3289,7 +3289,7 @@ def start_command_listener():
                         {"name": title, "value": description, "inline": False},
                     ],
                     "footer": {
-                        "text": now + "\nSmokey Alerts @ SmokeyNQ\nNot financial advice"
+                        "text": now + "\nSmokeyNQ\nNot financial advice"
                     }
                 }]
             }
