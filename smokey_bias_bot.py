@@ -53,7 +53,8 @@ DISCORD_WEBHOOK_XDRAFTS = os.getenv("DISCORD_WEBHOOK_XDRAFTS", "")
 DISCORD_WEBHOOK_SMOKEY  = os.getenv("DISCORD_WEBHOOK_SMOKEY",  "")
 
 # Optional: if set, bot listens for !test* commands in Discord
-DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
+DISCORD_BOT_TOKEN  = os.getenv("DISCORD_BOT_TOKEN", "")
+SMOKEY_OWNER_ID   = int(os.getenv("SMOKEY_OWNER_ID", "0"))
 
 # Optional: if set, enables !draftreply command
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
@@ -2224,7 +2225,7 @@ def build_discord_weekend_recap(week_wins, week_losses, week_chops, week_streak,
         week_val += "\n*No trades recorded this week*"
 
     embed = {
-        "title": "\U0001f4c5  Weekly Recap  |  " + week_range_str,
+        "title": "\U0001f4c5  Weekly Recap  |  " + date_str,
         "description": "Here's how the bias performed this week, and what to watch next.",
         "color": 0x5865f2,  # Discord blurple
         "fields": [
@@ -2255,10 +2256,10 @@ def run_weekend_recap():
         week_streak = "".join(r["result"] for r in week_history) if week_history else ""
 
         now_et   = datetime.now(ET)
-        week_range_str = _week_range_str()
+        date_str = now_et.strftime("%a %b %d")
 
         msg  = "--------------------\n"
-        msg += "📅 <b>Weekly Recap | " + week_range_str + "</b>\n"
+        msg += "📅 <b>Weekly Recap | " + date_str + "</b>\n"
         msg += "--------------------\n"
         msg += "<b>This Week:</b>\n"
         msg += str(week_wins) + "W  " + str(week_losses) + "L  " + str(week_chops) + "C\n"
@@ -2318,10 +2319,10 @@ def build_weekly_performance_post():
     week_chops  = sum(1 for r in week_history if r["result"] == "C")
     week_streak = "".join(r["result"] for r in week_history)
 
-    week_range_str = _week_range_str()
+    date_str = datetime.now(ET).strftime("%b %d, %Y")
 
     msg  = "📊 <b>Smokey Bias - Weekly Performance</b>\n"
-    msg += "Week of " + week_range_str + "\n"
+    msg += "Week ending " + date_str + "\n"
     msg += "--------------------\n"
     msg += "<b>This Week:</b>  " + str(week_wins) + "W  " + str(week_losses) + "L  " + str(week_chops) + "C\n"
     if week_streak:
@@ -2430,7 +2431,7 @@ def build_discord_bias_of_week(wins_this_week, week_wins, week_losses, week_chop
     week_line = "`" + str(week_wins) + "W` `" + str(week_losses) + "L` `" + str(week_chops) + "C`"
 
     embed = {
-        "title": "\U0001f3c6  Bias of the Week  |  " + week_range_str,
+        "title": "\U0001f3c6  Bias of the Week  |  " + date_str,
         "description": "**" + headline + "**",
         "color": color,
         "fields": [
@@ -2443,17 +2444,6 @@ def build_discord_bias_of_week(wins_this_week, week_wins, week_losses, week_chop
     return embed
 
 
-def _week_range_str():
-    """Return Mon-Fri date range string for current week e.g. Apr 21 - 25"""
-    from datetime import timedelta
-    now_et = datetime.now(ET)
-    days_since_monday = now_et.weekday()
-    monday = now_et - timedelta(days=days_since_monday)
-    friday = monday + timedelta(days=4)
-    if monday.month == friday.month:
-        return monday.strftime("%b %d") + " - " + friday.strftime("%d")
-    return monday.strftime("%b %d") + " - " + friday.strftime("%b %d")
-
 def run_trade_of_week():
     """Friday EOD - highlight the best bias delivery of the week."""
     print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running trade of the week...")
@@ -2462,8 +2452,8 @@ def run_trade_of_week():
         week_history = data["history"][-5:] if data["history"] else []
         wins_this_week = [r for r in week_history if r["result"] == "W"]
 
-        week_range_str = _week_range_str()
-        msg  = "🏆 <b>Bias of the Week | " + week_range_str + "</b>\n"
+        date_str = datetime.now(ET).strftime("%b %d")
+        msg  = "🏆 <b>Bias of the Week | " + date_str + "</b>\n"
         msg += "--------------------\n"
 
         if not wins_this_week:
@@ -3072,6 +3062,11 @@ def start_command_listener():
         intents.message_content = True
         bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
+        def owner_only(ctx):
+            if SMOKEY_OWNER_ID and ctx.author.id != SMOKEY_OWNER_ID:
+                return False
+            return True
+
         @bot.event
         async def on_ready():
             print("[COMMANDS] Listener online as " + str(bot.user))
@@ -3095,6 +3090,9 @@ def start_command_listener():
 
         @bot.command(name="testbias")
         async def testbias(ctx):
+            if not owner_only(ctx):
+                await ctx.message.delete()
+                return
             try:
                 _clear_job_flag("morning")
             except Exception:
@@ -3103,6 +3101,9 @@ def start_command_listener():
 
         @bot.command(name="testnyo")
         async def testnyo(ctx):
+            if not owner_only(ctx):
+                await ctx.message.delete()
+                return
             try:
                 _clear_job_flag("nyo")
             except Exception:
@@ -3111,6 +3112,9 @@ def start_command_listener():
 
         @bot.command(name="testeod")
         async def testeod(ctx):
+            if not owner_only(ctx):
+                await ctx.message.delete()
+                return
             try:
                 _clear_job_flag("eod")
             except Exception:
@@ -3124,6 +3128,9 @@ def start_command_listener():
         @bot.command(name="draftreply")
         async def draftreply(ctx, *, tweet: str = None):
             raw_content = ctx.message.content
+            if not owner_only(ctx):
+                await ctx.message.delete()
+                return
             if raw_content.startswith("!draftreply"):
                 tweet = raw_content[len("!draftreply"):].strip()
             if not tweet or len(tweet.strip()) < 10:
@@ -3150,6 +3157,9 @@ def start_command_listener():
         @bot.command(name="tweet")
         async def tweetcmd(ctx, *, topic: str = None):
             raw_content = ctx.message.content
+            if not owner_only(ctx):
+                await ctx.message.delete()
+                return
             if raw_content.startswith("!tweet"):
                 topic = raw_content[len("!tweet"):].strip()
             if not topic or len(topic.strip()) < 5:
@@ -3172,6 +3182,9 @@ def start_command_listener():
         @bot.command(name="makethread")
         async def threadcmd(ctx, *, topic: str = None):
             raw_content = ctx.message.content
+            if not owner_only(ctx):
+                await ctx.message.delete()
+                return
             if raw_content.startswith("!thread"):
                 topic = raw_content[len("!thread"):].strip()
             if not topic or len(topic.strip()) < 5:
@@ -3195,6 +3208,9 @@ def start_command_listener():
         @bot.command(name="hook")
         async def hookcmd(ctx, *, topic: str = None):
             raw_content = ctx.message.content
+            if not owner_only(ctx):
+                await ctx.message.delete()
+                return
             if raw_content.startswith("!hook"):
                 topic = raw_content[len("!hook"):].strip()
             if not topic or len(topic.strip()) < 5:
@@ -3216,6 +3232,9 @@ def start_command_listener():
         @bot.command(name="roast")
         async def roastcmd(ctx, *, tweet: str = None):
             raw_content = ctx.message.content
+            if not owner_only(ctx):
+                await ctx.message.delete()
+                return
             if raw_content.startswith("!roast"):
                 tweet = raw_content[len("!roast"):].strip()
             if not tweet or len(tweet.strip()) < 10:
@@ -3252,6 +3271,9 @@ def start_command_listener():
         @bot.command(name="bias")
         async def biascmd(ctx, *, args: str = None):
             raw_content = ctx.message.content
+            if not owner_only(ctx):
+                await ctx.message.delete()
+                return
             if raw_content.startswith("!bias"):
                 args = raw_content[len("!bias"):].strip()
             if not args or len(args.strip()) < 5:
@@ -3278,6 +3300,9 @@ def start_command_listener():
         @bot.command(name="recap")
         async def recapcmd(ctx, *, args: str = None):
             raw_content = ctx.message.content
+            if not owner_only(ctx):
+                await ctx.message.delete()
+                return
             if raw_content.startswith("!recap"):
                 args = raw_content[len("!recap"):].strip()
             if not args or len(args.strip()) < 5:
@@ -3304,6 +3329,9 @@ def start_command_listener():
         @bot.command(name="replybait")
         async def replybaitcmd(ctx, *, topic: str = None):
             raw_content = ctx.message.content
+            if not owner_only(ctx):
+                await ctx.message.delete()
+                return
             if raw_content.startswith("!replybait"):
                 topic = raw_content[len("!replybait"):].strip()
             await ctx.send("Drafting 5 reply-bait options" + (" on: " + topic if topic else "") + "...")
@@ -3347,6 +3375,9 @@ def start_command_listener():
         @bot.command(name="entry")
         async def alert_entry(ctx, *, text: str = ""):
             """!entry <details> — post a trade entry alert to #smokey"""
+            if not owner_only(ctx):
+                await ctx.message.delete()
+                return
             if not text:
                 await ctx.send("Usage: `!entry NQ long 25280, stop 25255, target 25430`")
                 return
@@ -3358,6 +3389,9 @@ def start_command_listener():
         @bot.command(name="trim")
         async def alert_trim(ctx, *, text: str = ""):
             """!trim <details> — post a trim/partial exit alert to #smokey"""
+            if not owner_only(ctx):
+                await ctx.message.delete()
+                return
             if not text:
                 await ctx.send("Usage: `!trim +75pts, moving stop to BE`")
                 return
@@ -3369,6 +3403,9 @@ def start_command_listener():
         @bot.command(name="exit")
         async def alert_exit(ctx, *, text: str = ""):
             """!exit <details> — post a full exit alert to #smokey"""
+            if not owner_only(ctx):
+                await ctx.message.delete()
+                return
             if not text:
                 await ctx.send("Usage: `!exit full exit at 25418, +138pts`")
                 return
@@ -3380,6 +3417,9 @@ def start_command_listener():
         @bot.command(name="comment")
         async def alert_comment(ctx, *, text: str = ""):
             """!comment <text> — post market commentary to #smokey"""
+            if not owner_only(ctx):
+                await ctx.message.delete()
+                return
             if not text:
                 await ctx.send("Usage: `!comment clean sweep of Asia Low into NY open`")
                 return
@@ -3391,6 +3431,9 @@ def start_command_listener():
         @bot.command(name="win")
         async def alert_win(ctx, *, text: str = ""):
             """!win <text> — post a milestone or achievement to #smokey"""
+            if not owner_only(ctx):
+                await ctx.message.delete()
+                return
             if not text:
                 await ctx.send("Usage: `!win passed the LucidPro 50K eval`")
                 return
