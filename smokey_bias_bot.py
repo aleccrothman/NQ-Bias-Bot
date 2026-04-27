@@ -2143,9 +2143,19 @@ def run_eod_score():
         if abs_diff <= 75:
             result_type = "choppy"
         elif direction == "bullish":
-            result_type = "win" if price_diff >= 100 else "failed"
+            if price_diff >= 100:
+                result_type = "win"
+            elif price_diff >= 75:
+                result_type = "win"  # partial win (75-99pts in bias direction)
+            else:
+                result_type = "failed"
         elif direction == "bearish":
-            result_type = "win" if price_diff <= -100 else "failed"
+            if price_diff <= -100:
+                result_type = "win"
+            elif price_diff <= -75:
+                result_type = "win"  # partial win (75-99pts in bias direction)
+            else:
+                result_type = "failed"
         else:
             result_type = "choppy"
 
