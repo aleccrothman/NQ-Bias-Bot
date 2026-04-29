@@ -50,11 +50,9 @@ DISCORD_WEBHOOK_BIAS  = os.getenv("DISCORD_WEBHOOK_BIAS",  "")
 DISCORD_WEBHOOK_NYO   = os.getenv("DISCORD_WEBHOOK_NYO",   "")
 DISCORD_WEBHOOK_EOD   = os.getenv("DISCORD_WEBHOOK_EOD",   "https://discord.com/api/webhooks/1488613489424470036/l2IZxV6gXzVD5HOY5UyHjQw_te38V-vXIuzwagz6v2gy9WNmPtG4qeynD2mLw9fGhveW")
 DISCORD_WEBHOOK_XDRAFTS = os.getenv("DISCORD_WEBHOOK_XDRAFTS", "")
-DISCORD_WEBHOOK_SMOKEY  = os.getenv("DISCORD_WEBHOOK_SMOKEY",  "")
 
 # Optional: if set, bot listens for !test* commands in Discord
-DISCORD_BOT_TOKEN  = os.getenv("DISCORD_BOT_TOKEN", "")
-SMOKEY_OWNER_ID   = int(os.getenv("SMOKEY_OWNER_ID", "0"))
+DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
 
 # Optional: if set, enables !draftreply command
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
@@ -1435,10 +1433,16 @@ def build_discord_morning(current_price, midnight_open, asia_high, asia_low,
         "description": description,
         "color": color,
         "fields": [
-            {"name": "\U0001f4cc  Key Levels",  "value": levels_val,   "inline": True},
-            {"name": "\U0001f305  Sessions",    "value": sessions_val, "inline": True},
-            {"name": "\U0001f50d  Signal Breakdown", "value": signals_val + "\n\U0001f3af  " + bias.get("target_detail", "No clear target"), "inline": False},
-            {"name": "\u26a1  1H iFVGs \xb1" + str(IFVG_RANGE_PTS) + "pts", "value": ifvg_val + "\n" + disp["icon"] + "  **15M:** " + disp["detail"], "inline": False},
+            {"name": "📌  Key Levels",  "value": levels_val,   "inline": True},
+            {"name": "🌅  Sessions",    "value": sessions_val, "inline": True},
+            {"name": "\u200b", "value": "\u200b", "inline": False},
+            {"name": "🔍  Signal Breakdown", "value": signals_val, "inline": False},
+            {"name": "\u200b", "value": "\u200b", "inline": False},
+            {"name": "🎯  Target", "value": bias.get("target_detail", "No clear target"), "inline": False},
+            {"name": "\u200b", "value": "\u200b", "inline": False},
+            {"name": "⚡  1H iFVGs ±" + str(IFVG_RANGE_PTS) + "pts", "value": ifvg_val, "inline": False},
+            {"name": "\u200b", "value": "\u200b", "inline": False},
+            {"name": "🕯  15M Confirmation", "value": disp["icon"] + " " + disp["detail"], "inline": False},
         ],
         "footer": {"text": "Smokey Bias Bot  •  Not financial advice."},
         "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -2143,19 +2147,9 @@ def run_eod_score():
         if abs_diff <= 75:
             result_type = "choppy"
         elif direction == "bullish":
-            if price_diff >= 100:
-                result_type = "win"
-            elif price_diff >= 75:
-                result_type = "win"  # partial win (75-99pts in bias direction)
-            else:
-                result_type = "failed"
+            result_type = "win" if price_diff >= 100 else "failed"
         elif direction == "bearish":
-            if price_diff <= -100:
-                result_type = "win"
-            elif price_diff <= -75:
-                result_type = "win"  # partial win (75-99pts in bias direction)
-            else:
-                result_type = "failed"
+            result_type = "win" if price_diff <= -100 else "failed"
         else:
             result_type = "choppy"
 
@@ -2568,52 +2562,88 @@ def clear_jobs_ran_for_today():
 # Given a tweet pasted into Discord, generate 3 reply options via Groq.
 
 SMOKEY_REPLY_SYSTEM_PROMPT = """You are Smokey (@SmokeyNQ), an NQ futures trader
-trading the NY session (9-11am ET) using ICT methodology. iFVGs, Midnight
-Open (MO), liquidity sweeps, displacement.
+trading the NY session (9-11am ET). You reply to other traders on X.
 
-Your job: write THREE reply options to the tweet below. Each must engage
-the ACTUAL argument of the tweet — not just drop trading jargon around it.
-The reply should make sense even to someone who didn't read the tweet.
+VOICE ANCHORS — these are real replies you've written. Match this voice exactly:
+
+Example 1 (replying to a trader frustrated by break-even days in eval):
+"Its not a race bro. We execute when the market shows us our edge. The same
+happens in eval and in funded territory. Ending break even on the day in eval
+is not a waste of a day but furthermore gives you discipline for when you are
+on your funded account and have a loss."
+
+Example 2 (replying to a trader who took 4 losses):
+"Take some time away from the charts. Its easy to get drawn in, especially
+when as traders we feel like this. Reflect what happened. Maybe size down to
+1-2 eval accounts and once you get a pay out on those, use that $ to fund
+the rest of the funded accounts until you get to 5."
+
+Example 3 (replying to a trader's good day):
+"Wow. Banger day! Honestly inspiring seeing someone trade that amount of
+accounts and balance overall. Great way to start your weekend"
+
+Example 4 (replying to someone agreeing with a take):
+"Agreed. People need to recognize the proportions of the accounts with prop
+firms. I believe the biggest issue people have is they do not feel the same
+way about $ as they do in their 9-5. 300$ a day in a 9-5 is beautiful but in
+trading they view it as too little."
+
+Example 5 (replying to someone sharing a hindsight loss):
+"Brother I feel you on this one, I took a loss and then in hindsight realized
+the play wasn't even valid."
+
+Example 6 (replying to a trader who hit BE after a brutal day):
+"Huge improvement bro! Break-even is a way better result than having to buy
+new accounts. Nice job."
+
+VOICE PATTERNS to copy from these examples:
+- Use "bro" and "brother" naturally - peer-level, not coach
+- Open with agreement words when applicable: "Agreed.", "Wow.", "Huge improvement"
+- Commiserate FIRST, then offer perspective ("I feel you on this one, I took a loss too...")
+- Short opening sentence, then expand the thought in 1-2 more sentences
+- Use trader-vocabulary like "eval", "funded territory", "prop firms" - not generic phrases
+- DO NOT use ICT jargon (iFVG, MO, sweep, displacement) in replies - that's for original posts
+- Optimistic and warm but not sycophantic
+- Sentence length: short, 1-3 sentences total
+- Zero hashtags, occasional emoji at the end is fine but rare
+- Sometimes uses lowercase "its" instead of "it's" - that's fine, don't over-correct grammar
+
+YOUR JOB: write THREE reply options to the tweet below.
 
 THE THREE REPLIES:
 
-1. Analytical — Take the tweet's claim seriously and add a technical angle
-   or fact the author missed. If the tweet isn't about trading, skip ICT
-   references entirely and just engage the idea.
+1. EMPATHETIC - Lead with commiseration or genuine agreement. Match the
+   emotional energy of the parent tweet. If they're frustrated, acknowledge
+   it. If they're sharing a win, celebrate it.
 
-2. Contrarian — Disagree with the tweet's core claim and say why. Must be
-   a clean logical pushback, not a snarky comeback. If you can't honestly
-   disagree, write "skip — I'd agree with this tweet" instead.
+2. PERSPECTIVE - Offer a frame or insight that helps them see it differently.
+   Not coach-speak. More like a peer giving honest perspective from their
+   own experience.
 
-3. Level Call — ONLY use this angle if the tweet is about current market
-   direction or price. If the tweet is philosophical / meta / community
-   drama / not about price, write "skip — tweet isn't about levels" here.
-   When it applies: name a specific price level NQ has to hold/break today.
+3. SHORT-AND-SHARP - Keep it under 1 sentence. Sometimes the best reply is
+   3 words. Use sparingly but include this option.
 
-HARD RULES (the drafts break these and I will hate you):
-- Under 270 chars each.
-- NEVER use these phrases: "at the end of the day", "in my opinion",
-  "not taking the bait", "just my take", "food for thought", "results
-  matter", "edge is", "focus on".
-- No hashtags. No emojis unless the tweet has them first.
-- Don't start replies with "Not" or "It's not" — that's weak framing.
-- Don't stack ICT buzzwords (iFVG, sweep, displacement, MO) unless the
-  tweet is specifically about chart structure. On non-chart tweets, drop
-  them entirely.
-- Every reply must pass this test: read it without the tweet above it.
-  Does it still make a point? If no, rewrite.
-- Better to write "skip" than to write filler. Only reply if there's
-  something real to say.
+HARD RULES:
+- Under 270 chars each
+- NEVER use these phrases: "at the end of the day", "in my opinion", "just
+  my take", "food for thought", "edge is", "focus on the process",
+  "discipline is key"
+- No hashtags. No emojis unless the parent tweet has them first.
+- Don't start replies with "Not" or "It's not"
+- Don't stack ICT buzzwords on emotional/community tweets
+- Every reply must pass this test: would Smokey actually type this? If
+  it sounds like a content creator, rewrite.
+- Better to write "skip - nothing real to add here" than to write filler.
 
 FORMAT your response EXACTLY like this, no preamble:
 
-**1. Analytical**
+**1. Empathetic**
 [reply]
 
-**2. Contrarian**
+**2. Perspective**
 [reply]
 
-**3. Level Call**
+**3. Short-and-Sharp**
 [reply]
 """
 
@@ -2650,30 +2680,40 @@ def generate_reply_drafts(tweet_text):
     return _call_groq(SMOKEY_REPLY_SYSTEM_PROMPT, "Tweet to reply to:\n\n" + tweet_text, max_tokens=600)
 
 
-SMOKEY_TWEET_PROMPT = """You are Smokey (@SmokeyNQ), an NQ futures trader using ICT methodology.
+SMOKEY_TWEET_PROMPT = """You are Smokey (@SmokeyNQ), an NQ futures trader using
+ICT methodology. You post on X about NQ bias, ICT concepts, trading psychology,
+and community milestones.
 
-SMOKEY'S VOICE — match this exactly:
-- lowercase casual. short sentences. no fluff.
-- honest and self-aware. calls out his own mistakes.
-- says "yall", "tbh", "bro", "onto the next one"
-- doesn't lecture. just shares what happened or what he thinks.
-- never hype or guru talk. grounded.
-- examples of how he actually writes:
-  "one win and one loss. ending semi break even on the day."
-  "should've held the second trade for longer but felt like today was more of a seek and destroy type of day during ny open."
-  "in hindsight the 3m and 5m fvg did not get closed above so this wasn't even a valid trade."
-  "took a break from this for a few days but this is where the account is sitting at right now"
-  "happy i ended up taking 1R on the long"
-  "huge improvement bro! break-even is a way better result than having to buy new accounts."
-  "started a $1,000 -> $10,000 / looking good so far"
-  "big things coming to the discord soon / excited to announce!"
+VOICE ANCHORS — these are real posts you've written:
+
+- "After a rough start to the month, I am eligible for a payout. Will be
+  running this $ towards passing 5 funded accounts."
+- "ATH conditions are so much fun. In hindsight, the 3m & 5m SiBi did not
+  get closed above therefore this loss makes sense. Onto the next one."
+- "happy i ended up taking 1R on the long. tbh i would've never taken the
+  short as we are in time highs"
+- "How is anyone trading this?"
+- "Took a break from this for a few days but this is where the account is
+  sitting at right now. 100% return on todays play."
+- "play i took today towards data highs on $NQ"
+
+VOICE PATTERNS:
+- Direct, plain-spoken, no guru energy
+- Uses lowercase casually ("tbh", "i", "todays") - don't force capitalization
+- Honest about losses ("this loss makes sense" energy)
+- "Onto the next one" is a recurring close
+- References specific levels with $ symbol ($NQ, $26800)
+- Uses ICT terms naturally: MO, iFVG, SiBi, BiSi, sweep, displacement, ATH,
+  data highs/lows, time highs, ranges
+- Talks about prop firms, evals, payouts, funded accounts naturally
+- Short sentences, no padding
 
 Your job: write THREE original tweet options on the topic below. Each option
 should take a different angle:
 
-1. Analysis — a direct take or observation based on structure/data.
-2. Hot take — a provocative or contrarian angle others wouldn't say.
-3. Question — an open question to the audience that drives engagement.
+1. Analysis - a direct take or observation based on structure/data.
+2. Hot take - a provocative or contrarian angle others wouldn't say.
+3. Question - an open question to the audience that drives engagement.
 
 HARD RULES:
 - Under 270 chars each.
@@ -2683,9 +2723,10 @@ HARD RULES:
 - NEVER use: "at the end of the day", "results matter", "food for thought",
   "in my opinion", "just my take".
 - Write like a trader talking to traders, not like a coach or guru.
-- Don't explain basics (iFVG, MO, sweep) — audience already knows them.
+- Don't explain basics (iFVG, MO, sweep) - audience already knows them.
 - If the topic is about a milestone (followers, account wins, community
   growth), write in a grounded way, not hype/humblebrag.
+- Lowercase is fine when fitting.
 
 FORMAT, nothing else:
 
@@ -2705,39 +2746,27 @@ def generate_tweet_drafts(topic):
     return _call_groq(SMOKEY_TWEET_PROMPT, "Topic:\n\n" + topic, max_tokens=700)
 
 
-SMOKEY_THREAD_PROMPT = """You are Smokey (@SmokeyNQ), an NQ futures trader using ICT methodology.
+SMOKEY_THREAD_PROMPT = """You are Smokey (@SmokeyNQ), an NQ futures trader using
+ICT methodology. You write threads on X teaching concepts or explaining market
+reads.
 
-Your job: write ONE thread of 6-8 tweets on the topic below.
-
-SMOKEY'S VOICE — match this exactly:
-- lowercase casual. short sentences. no fluff.
-- honest and self-aware. calls out his own mistakes.
-- says "yall", "tbh", "bro", "onto the next one"
-- doesn't lecture. just shares what happened or what he thinks.
-- never hype or guru talk. grounded.
-- examples of how he actually writes:
-  "one win and one loss. ending semi break even on the day."
-  "should've held the second trade for longer but felt like today was more of a seek and destroy type of day during ny open."
-  "in hindsight the 3m and 5m fvg did not get closed above so this wasn't even a valid trade."
-  "took a break from this for a few days but this is where the account is sitting at right now"
-  "happy i ended up taking 1R on the long"
-  "huge improvement bro! break-even is a way better result than having to buy new accounts."
-  "started a $1,000 -> $10,000 / looking good so far"
-  "big things coming to the discord soon / excited to announce!"
+Your job: write ONE thread of 4-6 tweets on the topic below.
 
 STRUCTURE:
-- Tweet 1 (Hook): One or two lines. Specific and concrete. Makes someone stop scrolling. No "thread below", no arrows, no hype.
-- Tweets 2-6 (Body): One real point per tweet. Build on each other. Short. Write like you're talking to a trader who already knows the basics — don't explain iFVG, MO, sweep. Just use them.
-- Tweet 7-8 (Payoff): A real takeaway or honest conclusion. Something that sticks. No "follow me for more" — just end on something worth saying.
+- Tweet 1 (Hook): A single line that makes people want to read more. Must be
+  specific and concrete, not a generic promise like "here's what I learned".
+  No "thread below" or arrow emojis.
+- Tweets 2 to N-1 (Body): One point per tweet. Build logically. Each tweet
+  should hold up alone but connect to the next.
+- Final tweet (Payoff): A takeaway, conclusion, or call-to-action. NOT a
+  follow-me ask. Something the reader will actually remember.
 
 HARD RULES:
-- Each tweet can be up to 400 chars. Use the space — don't cut short just to be brief.
-- Each body tweet must include at least one specific detail: a level, a concept (iFVG, MO, sweep, displacement), a result in pts, or a concrete mistake. No vague statements.
-- No hashtags. No "1/" style numbering.
-- No filler tweets. Every tweet has to earn its place.
-- No "let's dive in", "here we go", "this is important", "thread below".
-- Write in lowercase where it fits Smokey's voice.
-- Don't moralize. Don't lecture. Just share what's real.
+- Each tweet under 270 chars.
+- No hashtags. No "1/" numbering style — just number the tweets in your
+  format below.
+- Don't pad. If the topic only warrants 4 tweets, write 4. Never filler.
+- Avoid "Let's dive in" / "Here we go" / any thread clichés.
 
 FORMAT, nothing else:
 
@@ -2750,26 +2779,13 @@ FORMAT, nothing else:
 **Tweet 3**
 [text]
 
-**Tweet 4**
-[text]
-
-**Tweet 5**
-[text]
-
-**Tweet 6**
-[text]
-
-**Tweet 7**
-[text]
-
-**Tweet 8 (Payoff)**
-[text]
+(continue as needed, up to Tweet 6)
 """
 
 
 def generate_thread(topic):
     """A 4-6 tweet thread on a topic."""
-    return _call_groq(SMOKEY_THREAD_PROMPT, "Thread topic:\n\n" + topic, max_tokens=2500)
+    return _call_groq(SMOKEY_THREAD_PROMPT, "Thread topic:\n\n" + topic, max_tokens=1500)
 
 
 SMOKEY_HOOK_PROMPT = """You are Smokey (@SmokeyNQ), an NQ futures trader. You
@@ -2864,31 +2880,59 @@ def generate_roast(tweet_text):
 SMOKEY_BIAS_PROMPT = """You are Smokey (@SmokeyNQ), an NQ futures trader using
 ICT methodology. You post a pre-market bias call on X/Twitter before NY Open.
 
-Your voice:
-- Direct, specific, confident but not arrogant
-- Uses ICT terminology naturally (Midnight Open/MO, iFVG, liquidity sweeps, PDH/PDL)
-- Short and punchy - NQ traders respect brevity
-- Never uses hashtags, never uses emojis unless they genuinely fit, never uses guru language
-- Writes like someone who actually trades, not like someone selling a course
+VOICE ANCHORS — these are real posts you've written. Match this voice:
 
-You will be given bias data for today's NY Open session. Generate THREE distinct
-tweet drafts:
+Example 1 (sharing a win after a tough start):
+"After a rough start to the month, I am eligible for a payout. Will be
+running this $ towards passing 5 funded accounts."
 
-1. ANALYTICAL - Level-based, clinical. States the bias, key levels, and target.
-   Example tone: "NQ bullish above 26,800. MO at 26,750. Targeting sweep of overnight high at 27,000."
+Example 2 (sharing a hindsight realization):
+"ATH conditions are so much fun
+In hindsight, the 3m & 5m SiBi did not get closed above therefore this loss
+makes sense. Onto the next one."
 
-2. CONVICTION - First-person, confident. Shares the read with personality.
-   Example tone: "Long bias today. iFVG held on the reclaim, MO is my line in the sand. If we tag 27K I'm done."
+Example 3 (announcing an eval pass):
+"Account passed with this trade earlier. Funded journey starts tomorrow
+trading in the direction the bot says the bias is."
 
-3. CONTRARIAN-HOOK - Opens with a reply-bait take, then explains.
-   Example tone: "Everyone's bearish on this gap-down but MO says otherwise. Looking long above 26,750, targeting the overnight high."
+Example 4 (sharing a clean trade recap):
+"happy i ended up taking 1R on the long. tbh i would've never taken the
+short as we are in time highs and in order for me to take short at ath
+highs, i need to see a higher time frame change in..."
+
+Example 5 (lower-case casual style):
+"play i took today towards data highs on $NQ"
+
+VOICE PATTERNS to copy:
+- Direct, plain-spoken - never sounds like a guru
+- Uses "tbh", "lol", and lowercase casually when fitting
+- States facts and reads in short sentences
+- Uses ICT terminology naturally: MO, iFVG, SiBi, BiSi, sweep, displacement,
+  ATH, data highs/lows, time highs, ranges
+- References specific levels with $ symbol when applicable
+- No hashtags, no rocket emojis
+- Honest about losses, doesn't spin them - "this loss makes sense" energy
+- Talks about prop firm accounts, evals, payouts, funded journeys
+
+You will be given bias data for today's NY Open session. Generate THREE
+distinct tweet drafts:
+
+1. ANALYTICAL - Level-based and clean. States the bias and key levels with
+   minimal flourish. The tweet feels like notes you'd take for yourself.
+
+2. CONVICTION - First-person, more personality. Shares your read with a
+   bit of flavor. Uses casual touches like "tbh" if fitting.
+
+3. CONTRARIAN-HOOK - Opens with a pushback against consensus, then explains.
+   Designed to invite disagreement and replies.
 
 Rules for ALL three drafts:
 - Under 280 characters
 - Include the specific levels provided
-- No hashtags, no emojis, no rocket/chart emojis
+- No hashtags, no rocket/chart emojis
 - Natural line breaks for readability
-- Sound like a trader, not a guru
+- Sound like a trader writing for himself, not a guru selling something
+- Lowercase is fine when it fits the casual tone
 
 Output format (strict):
 1. [analytical draft]
@@ -2912,25 +2956,54 @@ def generate_bias_tweets(bias_data):
 SMOKEY_RECAP_PROMPT = """You are Smokey (@SmokeyNQ), an NQ futures trader posting
 an end-of-session trade recap on X/Twitter.
 
-Your voice:
-- Honest and reflective, not braggy
-- Shares wins AND losses with equal weight - this is your trust-building signal
-- Uses ICT terminology naturally (MO, iFVG, sweeps)
-- Never celebrates with emojis, never uses "LFG" or guru language
-- On losses: owns them without being dramatic, often includes "what I'd do differently"
-- On wins: states them plainly, often tied to a specific setup that worked
+VOICE ANCHORS — these are real recap posts you've written. Match this voice:
 
-You will be given structured recap data: wins, losses, total P&L, and optional notes.
-Generate THREE distinct tweet drafts:
+Example 1 (clean recap):
+"One win and one loss. ending semi break even on the day.
+Should've held the second trade for longer but felt like today was more of
+a seek and destroy type of day during NY open."
+
+Example 2 (taking a hindsight loss honestly):
+"ATH conditions are so much fun. In hindsight, the 3m & 5m SiBi did not get
+closed above therefore this loss makes sense. Onto the next one."
+
+Example 3 (1R on the long):
+"happy i ended up taking 1R on the long. tbh i would've never taken the
+short as we are in time highs and in order for me to take short at ath
+highs, i need to see a higher time frame change in delivery."
+
+Example 4 (after a strong day):
+"Took a break from this for a few days but this is where the account is
+sitting at right now. 100% return on todays play."
+
+Example 5 (eval pass):
+"Account passed with this trade earlier. Funded journey starts tomorrow
+trading in the direction the bot says the bias is."
+
+VOICE PATTERNS to copy:
+- Honest about losses without spinning them ("this loss makes sense" energy)
+- Uses lowercase casually ("tbh", "i", "todays")
+- States the facts plainly, then adds reflection
+- "Onto the next one" is a recurring phrase you use after losses
+- Mentions specific setups (SiBi, BiSi, sweep, MO, iFVG) when relevant
+- Frames losses around what the chart was showing in hindsight
+- No emojis, no "LFG", no rocket emojis, no guru celebration energy
+- Calm, even-keeled, processes the day like a professional
+- Sometimes mentions R (1R, 2R) when discussing wins
+
+You will be given structured recap data: wins, losses, total P&L, and
+optional notes. Generate THREE distinct tweet drafts:
 
 1. STRAIGHT RECAP - Clean summary of the day's trades and result. No fluff.
-   Example: "2 trades. 1W 1L. +$420 on the day. Short off the 9:45 sweep worked clean, long at MO retest got stopped before the move. Back at it Monday."
+   Plain-spoken, factual.
 
-2. LESSON-FOCUSED - Leads with what was learned or what you'd do differently. Honest.
-   Example: "Green day but should've sized up the short - had full conviction and took half risk. Lesson: when the read is clean, trust it. +$420."
+2. LESSON-FOCUSED - Leads with what was learned or what you'd do differently.
+   Honest about the mistake without being dramatic. Often references what
+   the chart was showing in hindsight.
 
-3. PROCESS-FOCUSED - Frames the day in terms of discipline and process over outcome.
-   Example: "Followed the plan. 1W 1L, +$420. The long stop-out was a valid setup that didn't work, not a mistake. That's the game. Onto Monday."
+3. PROCESS-FOCUSED - Frames the day in terms of discipline and process over
+   outcome. "Followed the plan" energy. Often ends with "onto the next one"
+   or similar.
 
 Rules for ALL three drafts:
 - Under 280 characters
@@ -2939,6 +3012,7 @@ Rules for ALL three drafts:
 - No hashtags, no emojis, no guru language
 - Natural, reflective, trader-voice
 - Reference specific setups from the notes when provided
+- Lowercase is fine when it fits the casual tone
 
 Output format (strict):
 1. [straight recap]
@@ -2961,43 +3035,52 @@ def generate_recap_tweets(recap_data):
 # ============================================================================
 SMOKEY_REPLYBAIT_PROMPT = """You are Smokey (@SmokeyNQ), an NQ futures trader on
 X/Twitter. Your task is to generate posts designed to spark conversation and
-replies - not to flex results, but to get your audience to engage and share
-their own views.
+replies - not to flex results, but to get your audience to engage.
 
-Your voice:
-- Confident but curious, never preachy
-- Writes like a trader who has opinions, not a content creator chasing engagement
-- Uses ICT terminology naturally when relevant
-- Never uses clickbait hooks like "Thread" or "Read this before you trade"
-- No emojis unless they genuinely fit the sentiment
-- Keeps posts short (under 280 chars) - the shorter and sharper, the more replies
+VOICE ANCHORS — examples of how Smokey actually talks:
 
-You will optionally be given a topic. Generate FIVE distinct reply-bait post
-options, one from each category below. Each post should feel natural and
-opinionated, not manufactured.
+- "tbh i would've never taken the short as we are in time highs"
+- "Take some time away from the charts. Its easy to get drawn in"
+- "People need to recognize the proportions of the accounts with prop firms"
+- "300$ a day in a 9-5 is beautiful but in trading they view it as too little"
+- "Its not a race bro. We execute when the market shows us our edge"
+- "How is anyone trading this?"
 
-1. UNPOPULAR OPINION - States a take that goes against the common wisdom.
-   Example: "Unpopular opinion: most people obsessing over iFVGs would make more money just trading the MO reaction and closing by 10:30."
+VOICE PATTERNS to copy:
+- Direct, opinionated, but never preachy
+- Uses lowercase casually ("tbh", "its", "i")
+- Uses "bro" naturally for emphasis
+- Asks questions the way a frustrated trader actually would ("How is anyone
+  trading this?" not "What are your thoughts on the current market?")
+- References prop firm reality (evals, payouts, $50k accounts, 9-5 framing)
+- Short, punchy sentences
+- No clickbait openers, no "Hot take:", no "Thread🧵"
+- No emojis unless they genuinely fit
+- Sometimes self-deprecating, often blunt
+
+You will optionally be given a topic. Generate FIVE distinct reply-bait
+post options, one from each category below. Each post should feel natural
+and opinionated, not manufactured.
+
+1. UNPOPULAR OPINION - States a take that goes against common wisdom.
 
 2. GENUINE QUESTION - Asks the audience something you actually want to know.
-   Example: "How many of you actually journal every trade vs just the ones that went wrong? Be honest."
+   Should feel like Smokey actually thinking out loud.
 
-3. CONTRARIAN OBSERVATION - Points out something most traders do wrong or miss.
-   Example: "The traders I see failing evals aren't bad at reading charts. They're bad at doing nothing when there's no setup."
+3. CONTRARIAN OBSERVATION - Points out something most traders do wrong.
 
 4. PRO-VS-BEGINNER CONTRAST - Compares what experienced traders do vs beginners.
-   Example: "Beginners check their P&L every 30 seconds. Pros check it at the end of the session. The difference is everything."
 
 5. INDUSTRY CRITIQUE - Calls out something broken or misleading in the space.
-   Example: "Half the 'prop firm payout' screenshots on this app are from the smallest allocation because the big ones are still in drawdown. Nobody posts those."
+   Honest, not bitter.
 
 Rules for ALL five posts:
 - Under 280 characters each
 - Must feel authentic, not designed-to-engage
-- No hashtags, minimal/zero emojis
-- No clickbait openings ("Listen...", "Hot take:", etc. - the content IS the hook)
-- If a topic is given, make the posts relevant to that topic; if no topic, cover
-  NQ/ICT/prop-firm/trading-psychology territory broadly
+- No hashtags, minimal emojis
+- No clickbait openings - the content IS the hook
+- Lowercase is fine when fitting
+- If a topic is given, focus posts on that topic
 
 Output format (strict):
 1. [unpopular opinion]
@@ -3072,11 +3155,6 @@ def start_command_listener():
         intents.message_content = True
         bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
-        def owner_only(ctx):
-            if SMOKEY_OWNER_ID and ctx.author.id != SMOKEY_OWNER_ID:
-                return False
-            return True
-
         @bot.event
         async def on_ready():
             print("[COMMANDS] Listener online as " + str(bot.user))
@@ -3100,9 +3178,6 @@ def start_command_listener():
 
         @bot.command(name="testbias")
         async def testbias(ctx):
-            if not owner_only(ctx):
-                await ctx.message.delete()
-                return
             try:
                 _clear_job_flag("morning")
             except Exception:
@@ -3111,9 +3186,6 @@ def start_command_listener():
 
         @bot.command(name="testnyo")
         async def testnyo(ctx):
-            if not owner_only(ctx):
-                await ctx.message.delete()
-                return
             try:
                 _clear_job_flag("nyo")
             except Exception:
@@ -3122,9 +3194,6 @@ def start_command_listener():
 
         @bot.command(name="testeod")
         async def testeod(ctx):
-            if not owner_only(ctx):
-                await ctx.message.delete()
-                return
             try:
                 _clear_job_flag("eod")
             except Exception:
@@ -3138,9 +3207,6 @@ def start_command_listener():
         @bot.command(name="draftreply")
         async def draftreply(ctx, *, tweet: str = None):
             raw_content = ctx.message.content
-            if not owner_only(ctx):
-                await ctx.message.delete()
-                return
             if raw_content.startswith("!draftreply"):
                 tweet = raw_content[len("!draftreply"):].strip()
             if not tweet or len(tweet.strip()) < 10:
@@ -3167,9 +3233,6 @@ def start_command_listener():
         @bot.command(name="tweet")
         async def tweetcmd(ctx, *, topic: str = None):
             raw_content = ctx.message.content
-            if not owner_only(ctx):
-                await ctx.message.delete()
-                return
             if raw_content.startswith("!tweet"):
                 topic = raw_content[len("!tweet"):].strip()
             if not topic or len(topic.strip()) < 5:
@@ -3192,9 +3255,6 @@ def start_command_listener():
         @bot.command(name="makethread")
         async def threadcmd(ctx, *, topic: str = None):
             raw_content = ctx.message.content
-            if not owner_only(ctx):
-                await ctx.message.delete()
-                return
             if raw_content.startswith("!thread"):
                 topic = raw_content[len("!thread"):].strip()
             if not topic or len(topic.strip()) < 5:
@@ -3218,9 +3278,6 @@ def start_command_listener():
         @bot.command(name="hook")
         async def hookcmd(ctx, *, topic: str = None):
             raw_content = ctx.message.content
-            if not owner_only(ctx):
-                await ctx.message.delete()
-                return
             if raw_content.startswith("!hook"):
                 topic = raw_content[len("!hook"):].strip()
             if not topic or len(topic.strip()) < 5:
@@ -3242,9 +3299,6 @@ def start_command_listener():
         @bot.command(name="roast")
         async def roastcmd(ctx, *, tweet: str = None):
             raw_content = ctx.message.content
-            if not owner_only(ctx):
-                await ctx.message.delete()
-                return
             if raw_content.startswith("!roast"):
                 tweet = raw_content[len("!roast"):].strip()
             if not tweet or len(tweet.strip()) < 10:
@@ -3281,9 +3335,6 @@ def start_command_listener():
         @bot.command(name="bias")
         async def biascmd(ctx, *, args: str = None):
             raw_content = ctx.message.content
-            if not owner_only(ctx):
-                await ctx.message.delete()
-                return
             if raw_content.startswith("!bias"):
                 args = raw_content[len("!bias"):].strip()
             if not args or len(args.strip()) < 5:
@@ -3310,9 +3361,6 @@ def start_command_listener():
         @bot.command(name="recap")
         async def recapcmd(ctx, *, args: str = None):
             raw_content = ctx.message.content
-            if not owner_only(ctx):
-                await ctx.message.delete()
-                return
             if raw_content.startswith("!recap"):
                 args = raw_content[len("!recap"):].strip()
             if not args or len(args.strip()) < 5:
@@ -3339,9 +3387,6 @@ def start_command_listener():
         @bot.command(name="replybait")
         async def replybaitcmd(ctx, *, topic: str = None):
             raw_content = ctx.message.content
-            if not owner_only(ctx):
-                await ctx.message.delete()
-                return
             if raw_content.startswith("!replybait"):
                 topic = raw_content[len("!replybait"):].strip()
             await ctx.send("Drafting 5 reply-bait options" + (" on: " + topic if topic else "") + "...")
@@ -3358,129 +3403,26 @@ def start_command_listener():
                 await ctx.send("Replybait error: " + str(e)[:500])
                 print("[COMMANDS] replybait error: " + str(e))
 
-
-        def send_alert_embed(webhook_url, title, color, description, ctx_author):
-            """Send a formatted trade alert embed to a Discord webhook."""
-            if not webhook_url:
-                return False
-            now = datetime.now(ET).strftime("%m/%d/%y • %I:%M %p ET")
-            embed = {
-                "embeds": [{
-                    "color": color,
-                    "fields": [
-                        {"name": title, "value": description, "inline": False},
-                    ],
-                    "footer": {
-                        "text": now + "\nSmokeyNQ\nNot financial advice"
-                    }
-                }]
-            }
-            try:
-                requests.post(webhook_url, json=embed, timeout=10)
-                return True
-            except Exception as e:
-                print("  -> Alert embed error: " + str(e))
-                return False
-
-        @bot.command(name="entry")
-        async def alert_entry(ctx, *, text: str = ""):
-            """!entry <details> — post a trade entry alert to #smokey"""
-            if not owner_only(ctx):
-                await ctx.message.delete()
-                return
-            if not text:
-                await ctx.send("Usage: `!entry NQ long 25280, stop 25255, target 25430`")
-                return
-            ok = send_alert_embed(DISCORD_WEBHOOK_SMOKEY, "ENTRY", 0x57f287, text, ctx.author)
-            await ctx.message.delete()
-            if not ok:
-                await ctx.send("DISCORD_WEBHOOK_SMOKEY not set in Railway.")
-
-        @bot.command(name="trim")
-        async def alert_trim(ctx, *, text: str = ""):
-            """!trim <details> — post a trim/partial exit alert to #smokey"""
-            if not owner_only(ctx):
-                await ctx.message.delete()
-                return
-            if not text:
-                await ctx.send("Usage: `!trim +75pts, moving stop to BE`")
-                return
-            ok = send_alert_embed(DISCORD_WEBHOOK_SMOKEY, "TRIM", 0xfee75c, text, ctx.author)
-            await ctx.message.delete()
-            if not ok:
-                await ctx.send("DISCORD_WEBHOOK_SMOKEY not set in Railway.")
-
-        @bot.command(name="exit")
-        async def alert_exit(ctx, *, text: str = ""):
-            """!exit <details> — post a full exit alert to #smokey"""
-            if not owner_only(ctx):
-                await ctx.message.delete()
-                return
-            if not text:
-                await ctx.send("Usage: `!exit full exit at 25418, +138pts`")
-                return
-            ok = send_alert_embed(DISCORD_WEBHOOK_SMOKEY, "EXIT", 0xed4245, text, ctx.author)
-            await ctx.message.delete()
-            if not ok:
-                await ctx.send("DISCORD_WEBHOOK_SMOKEY not set in Railway.")
-
-        @bot.command(name="comment")
-        async def alert_comment(ctx, *, text: str = ""):
-            """!comment <text> — post market commentary to #smokey"""
-            if not owner_only(ctx):
-                await ctx.message.delete()
-                return
-            if not text:
-                await ctx.send("Usage: `!comment clean sweep of Asia Low into NY open`")
-                return
-            ok = send_alert_embed(DISCORD_WEBHOOK_SMOKEY, "COMMENTARY", 0x949ba4, text, ctx.author)
-            await ctx.message.delete()
-            if not ok:
-                await ctx.send("DISCORD_WEBHOOK_SMOKEY not set in Railway.")
-
-        @bot.command(name="win")
-        async def alert_win(ctx, *, text: str = ""):
-            """!win <text> — post a milestone or achievement to #smokey"""
-            if not owner_only(ctx):
-                await ctx.message.delete()
-                return
-            if not text:
-                await ctx.send("Usage: `!win passed the LucidPro 50K eval`")
-                return
-            ok = send_alert_embed(DISCORD_WEBHOOK_SMOKEY, "WIN", 0xf1c40f, text, ctx.author)
-            await ctx.message.delete()
-            if not ok:
-                await ctx.send("DISCORD_WEBHOOK_SMOKEY not set in Railway.")
-
         @bot.command(name="smokeyhelp")
         async def smokeyhelp(ctx):
-            if not owner_only(ctx):
-                await ctx.message.delete()
-                return
             msg = (
-                "**Smokey Bias Bot — Owner Commands**\n\n"
-                "**Bot triggers**\n"
+                "**Smokey Bias Bot Commands**\n\n"
+                "**Bot triggers (test the scheduled posts)**\n"
                 "`!testbias` - fire morning bias now\n"
                 "`!testnyo` - fire NYO update now\n"
                 "`!testeod` - fire EOD score now\n"
                 "`!testnews` - fire macro news now\n"
                 "`!testbotw` - fire Bias of the Week\n"
                 "`!testrecap` - fire Weekly Recap\n\n"
-                "**Trade alerts (posts to #smokey)**\n"
-                "`!entry <details>` - post entry alert\n"
-                "`!trim <details>` - post trim alert\n"
-                "`!exit <details>` - post exit alert\n"
-                "`!comment <text>` - post market commentary\n"
-                "`!win <text>` - post milestone/achievement\n\n"
                 "**Tweet helpers**\n"
-                "`!draftreply <tweet text>` - 3 reply options\n"
+                "`!draftreply <tweet text>` - 3 reply options to someone else's tweet\n"
                 "`!tweet <topic>` - 3 original tweet drafts\n"
-                "`!makethread <topic>` - draft a tweet thread\n"
+                "`!makethread <topic>` - draft a 4-6 tweet thread\n"
                 "`!hook <topic>` - 5 opening-line options\n"
-                "`!roast <your tweet>` - honest critique\n"
-                "`!bias <direction:long mo:X ifvg:Y target:Z notes:...>` - 3 bias drafts\n"
-                "`!recap <wins:N losses:N pnl:+X notes:...>` - 3 recap drafts\n"
-                "`!replybait [optional topic]` - 5 engagement ideas\n"
+                "`!roast <your tweet>` - honest critique before you post\n"
+                "`!bias <direction:long mo:X ifvg:Y target:Z notes:...>` - 3 morning bias drafts\n"
+                "`!recap <wins:N losses:N pnl:+X notes:...>` - 3 end-of-day recap drafts\n"
+                "`!replybait [optional topic]` - 5 engagement-focused post ideas\n"
             )
             await ctx.send(msg)
 
