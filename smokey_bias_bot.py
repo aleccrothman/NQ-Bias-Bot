@@ -3479,8 +3479,8 @@ def main():
     fired_today = set()  # in-memory guard against double-firing
     JOBS = [
         (11,  0,  "news",    run_news_job,          True),
-        (12, 30,  "biasrmd", run_bias_reminder,     True),  # 8:30am ET weekday reminder to run !bias
-        (12, 30,  "morning", run_morning_bias,       True),
+        (12,  0,  "biasrmd", run_bias_reminder,     True),  # 8:30am ET weekday reminder to run !bias
+        (12,  0,  "morning", run_morning_bias,       True),
         (13,  0,  "nyo",     run_nyo_update,         True),
         (20,  0,  "eod",     run_eod_score,          True),
         (21,  0,  "totw",    run_trade_of_week,      False),  # Friday only checked inside
