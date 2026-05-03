@@ -3151,6 +3151,7 @@ def start_command_listener():
         intents = discord.Intents.default()
         intents.message_content = True
         bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
+        register_tweet_commands(bot)
 
         @bot.event
         async def on_ready():
