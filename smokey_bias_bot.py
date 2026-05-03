@@ -7,6 +7,7 @@ Schedule (UTC times for Railway):
   20:00 UTC (16:00 ET) - EOD score + win rate\n"""
 
 import os
+from tweet_prompts import register_tweet_commands
 import json
 import time
 import requests
