@@ -3424,6 +3424,7 @@ def start_command_listener():
             )
             await ctx.send(msg)
 
+        register_tweet_commands(bot)
         try:
             bot.run(DISCORD_BOT_TOKEN, log_handler=None)
         except Exception as e:
