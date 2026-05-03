@@ -492,7 +492,19 @@ def generate_cta_post(angle=""):
 # because Discord registers commands by name and the last one wins.
 
 def register_tweet_commands(bot):
-    """Register all upgraded tweet-drafting commands on the given bot."""
+    """Register all upgraded tweet-drafting commands on the given bot.
+    
+    Removes any existing commands of the same name first so this safely
+    overrides the older versions defined in smokey_bias_bot.py.
+    """
+
+    # Remove any existing versions of these commands first
+    for cmd_name in ["replies", "draftreply", "tweet", "makethread", "bias",
+                     "recap", "insight", "cta", "smokeyhelp"]:
+        try:
+            bot.remove_command(cmd_name)
+        except Exception:
+            pass
 
     async def _send_long(ctx, response):
         if len(response) <= 2000:
