@@ -52,6 +52,118 @@ DISCORD_WEBHOOK_NYO   = os.getenv("DISCORD_WEBHOOK_NYO",   "")
 DISCORD_WEBHOOK_EOD   = os.getenv("DISCORD_WEBHOOK_EOD",   "https://discord.com/api/webhooks/1488613489424470036/l2IZxV6gXzVD5HOY5UyHjQw_te38V-vXIuzwagz6v2gy9WNmPtG4qeynD2mLw9fGhveW")
 DISCORD_WEBHOOK_XDRAFTS = os.getenv("DISCORD_WEBHOOK_XDRAFTS", "")
 
+# ── Verse of the Day ──────────────────────────────────────────────────────────
+DISCORD_WEBHOOK_ANNOUNCEMENTS = os.getenv("DISCORD_WEBHOOK_ANNOUNCEMENTS", "")
+
+VERSE_POOL = [
+    ("Philippians 4:13",  "I can do all things through Christ who strengthens me."),
+    ("Proverbs 3:5-6",    "Trust in the Lord with all your heart and lean not on your own understanding; in all your ways submit to him, and he will make your paths straight."),
+    ("Joshua 1:9",        "Be strong and courageous. Do not be afraid; do not be discouraged, for the Lord your God will be with you wherever you go."),
+    ("Jeremiah 29:11",    "For I know the plans I have for you, declares the Lord, plans to prosper you and not to harm you, plans to give you hope and a future."),
+    ("Romans 8:28",       "And we know that in all things God works for the good of those who love him, who have been called according to his purpose."),
+    ("Isaiah 40:31",      "But those who hope in the Lord will renew their strength. They will soar on wings like eagles; they will run and not grow weary, they will walk and not be faint."),
+    ("Psalm 46:1",        "God is our refuge and strength, an ever-present help in trouble."),
+    ("Proverbs 16:3",     "Commit to the Lord whatever you do, and he will establish your plans."),
+    ("Matthew 6:33",      "But seek first his kingdom and his righteousness, and all these things will be given to you as well."),
+    ("2 Timothy 1:7",     "For the Spirit God gave us does not make us timid, but gives us power, love and self-discipline."),
+    ("Psalm 23:1",        "The Lord is my shepherd, I lack nothing."),
+    ("Romans 5:3-4",      "We also glory in our sufferings, because we know that suffering produces perseverance; perseverance, character; and character, hope."),
+    ("Proverbs 4:7",      "The beginning of wisdom is this: Get wisdom. Though it cost all you have, get understanding."),
+    ("Psalm 37:4",        "Take delight in the Lord, and he will give you the desires of your heart."),
+    ("Matthew 5:6",       "Blessed are those who hunger and thirst for righteousness, for they will be filled."),
+    ("1 Corinthians 10:31", "So whether you eat or drink or whatever you do, do it all for the glory of God."),
+    ("Colossians 3:23",   "Whatever you do, work at it with all your heart, as working for the Lord, not for human masters."),
+    ("Proverbs 13:11",    "Dishonest money dwindles away, but whoever gathers money little by little makes it grow."),
+    ("Luke 12:15",        "Watch out! Be on your guard against all kinds of greed; life does not consist in an abundance of possessions."),
+    ("James 1:5",         "If any of you lacks wisdom, you should ask God, who gives generously to all without finding fault, and it will be given to you."),
+    ("Psalm 119:105",     "Your word is a lamp for my feet, a light on my path."),
+    ("Proverbs 11:14",    "For lack of guidance a nation falls, but victory is won through many advisers."),
+    ("Romans 12:2",       "Do not conform to the pattern of this world, but be transformed by the renewing of your mind."),
+    ("Galatians 6:9",     "Let us not become weary in doing good, for at the proper time we will reap a harvest if we do not give up."),
+    ("Psalm 90:12",       "Teach us to number our days, that we may gain a heart of wisdom."),
+    ("Proverbs 27:1",     "Do not boast about tomorrow, for you do not know what a day may bring."),
+    ("Matthew 11:28",     "Come to me, all you who are weary and burdened, and I will give you rest."),
+    ("1 Peter 5:7",       "Cast all your anxiety on him because he cares for you."),
+    ("Psalm 27:1",        "The Lord is my light and my salvation — whom shall I fear? The Lord is the stronghold of my life — of whom shall I be afraid?"),
+    ("Proverbs 22:1",     "A good name is more desirable than great riches; to be esteemed is better than silver or gold."),
+]
+
+def get_verse_of_the_day():
+    """Fetch verse from bible-api.com with fallback to curated pool."""
+    # Use day of year to pick a consistent verse from the pool each day
+    day_of_year = datetime.now(ET).timetuple().tm_yday
+    fallback = VERSE_POOL[day_of_year % len(VERSE_POOL)]
+
+    try:
+        # Pick a reference from pool and fetch full text from API
+        ref, _ = fallback
+        encoded = ref.replace(" ", "%20").replace(":", "%3A").replace("-", "-")
+        resp = requests.get(
+            f"https://bible-api.com/{encoded}",
+            timeout=8
+        )
+        if resp.ok:
+            data = resp.json()
+            text = data.get("text", "").strip().replace("\n", " ")
+            reference = data.get("reference", ref)
+            if text:
+                return reference, text
+    except Exception as e:
+        print(f"  -> Bible API failed: {e}")
+
+    return fallback
+
+def run_verse_of_the_day():
+    """Post daily Bible verse to #announcements on Discord and Telegram."""
+    if job_already_ran("votd"):
+        print("  -> Verse of the day already ran today, skipping")
+        return
+    mark_job_ran("votd")
+    print("\n[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] Running verse of the day...")
+    try:
+        reference, text = get_verse_of_the_day()
+        date_str = datetime.now(ET).strftime("%A, %B %d")
+
+        # ── Discord embed → #announcements ───────────────────────────────────
+        if DISCORD_WEBHOOK_ANNOUNCEMENTS:
+            embed = {
+                "title": "✝️  Verse of the Day",
+                "description": f"*\"{text}\"*",
+                "color": 0x2C3E6B,
+                "fields": [
+                    {"name": "📖  Reference", "value": f"**{reference}**", "inline": True},
+                    {"name": "📅  Date", "value": date_str, "inline": True},
+                ],
+                "footer": {"text": "SmokeyNQ  •  Have a blessed trading day."},
+                "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
+            payload = {
+                "username": "SmokeyNQ",
+                "avatar_url": "https://i.imgur.com/8yGNdYt.jpeg",
+                "embeds": [embed],
+            }
+            resp = requests.post(DISCORD_WEBHOOK_ANNOUNCEMENTS, json=payload, timeout=10)
+            if resp.ok:
+                print(f"  -> Verse posted to #announcements: {reference}")
+            else:
+                print(f"  -> Discord failed: {resp.status_code}")
+
+        # ── Telegram ─────────────────────────────────────────────────────────
+        tg_msg = (
+            f"✝️ <b>Verse of the Day | {date_str}</b>\n"
+            f"--------------------\n"
+            f"<i>\"{text}\"</i>\n"
+            f"--------------------\n"
+            f"<b>{reference}</b>\n"
+            f"<i>Have a blessed trading day. 🙏</i>"
+        )
+        send_telegram_text(tg_msg)
+
+    except Exception as e:
+        print(f"  -> Verse of the day error: {e}")
+
+
+
 # Optional: if set, bot listens for !test* commands in Discord
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
 
@@ -3480,6 +3592,7 @@ def main():
     # Format: (utc_hour, utc_minute, job_key, function, weekday_only)
     fired_today = set()  # in-memory guard against double-firing
     JOBS = [
+        (11,  0,  "votd",    run_verse_of_the_day,  True),
         (11,  0,  "news",    run_news_job,          True),
         (12,  0,  "biasrmd", run_bias_reminder,     True),  # 8:30am ET weekday reminder to run !bias
         (12,  0,  "morning", run_morning_bias,       True),
