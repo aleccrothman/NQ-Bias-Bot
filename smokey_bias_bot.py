@@ -3277,6 +3277,10 @@ def start_command_listener():
                 await ctx.send("Error in " + label + ": " + str(e)[:500])
                 print("[COMMANDS] " + label + " error: " + str(e))
 
+        @bot.command(name="testvotd")
+        async def testvotd(ctx):
+            await fire_job(ctx, run_verse_of_the_day, "Verse of the Day")
+
         @bot.command(name="testrecap")
         async def testrecap(ctx):
             await fire_job(ctx, run_weekend_recap, "Weekly Recap")
