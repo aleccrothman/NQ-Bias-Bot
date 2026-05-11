@@ -1541,11 +1541,20 @@ def build_discord_morning(current_price, midnight_open, asia_high, asia_low,
     # 15M displacement check
     disp = detect_15m_displacement(midnight_open)
 
+    # Verse of the day — top field
+    votd_field = []
+    try:
+        _ref, _text = get_verse_of_the_day()
+        votd_val = "*\"" + _text + "\"*\n**— " + _ref + "**"
+        votd_field = [{"name": "✝️  Verse of the Day", "value": votd_val, "inline": False}]
+    except Exception:
+        pass
+
     embed = {
         "title": "📊  NQ1! Daily Bias  |  " + date_str,
         "description": description,
         "color": color,
-        "fields": [
+        "fields": votd_field + [
             {"name": "📌  Key Levels",  "value": levels_val,   "inline": True},
             {"name": "🌅  Sessions",    "value": sessions_val, "inline": True},
             {"name": "🔍  Signal Breakdown", "value": signals_val, "inline": False},
