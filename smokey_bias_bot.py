@@ -3610,7 +3610,7 @@ def main():
         (12,  0,  "biasrmd", run_bias_reminder,     True),  # 8:30am ET weekday reminder to run !bias
         (12,  0,  "morning", run_morning_bias,       True),
         (13,  0,  "nyo",     run_nyo_update,         True),
-        (20,  0,  "eod",     run_eod_score,          True),
+        (21,  0,  "eod",     run_eod_score,          True),
         (21,  0,  "totw",    run_trade_of_week,      False),  # Friday only checked inside
         (14,  0,  "recap",   run_weekend_recap,      False),  # Saturday only
         (14,  0,  "weekly",  run_weekly_performance, False),  # Sunday only
