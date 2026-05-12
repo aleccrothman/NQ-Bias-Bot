@@ -124,8 +124,8 @@ def run_verse_of_the_day():
         reference, text = get_verse_of_the_day()
         date_str = datetime.now(ET).strftime("%A, %B %d")
 
-        # ── Discord embed → #announcements ───────────────────────────────────
-        if DISCORD_WEBHOOK_ANNOUNCEMENTS:
+        # ── Discord embed → #announcements (disabled - verse now in daily bias embed) ──
+        if False and DISCORD_WEBHOOK_ANNOUNCEMENTS:
             embed = {
                 "title": "✝️  Verse of the Day",
                 "description": f"*\"{text}\"*",
@@ -3605,7 +3605,6 @@ def main():
     # Format: (utc_hour, utc_minute, job_key, function, weekday_only)
     fired_today = set()  # in-memory guard against double-firing
     JOBS = [
-        (11,  0,  "votd",    run_verse_of_the_day,  True),
         (11,  0,  "news",    run_news_job,          True),
         (12,  0,  "biasrmd", run_bias_reminder,     True),  # 8:30am ET weekday reminder to run !bias
         (12,  0,  "morning", run_morning_bias,       True),
