@@ -3453,77 +3453,6 @@ def start_command_listener():
         async def testnews(ctx):
             await fire_job(ctx, run_news_job, "Macro News")
 
-        @bot.command(name="reply")
-        async def draftreply(ctx, *, tweet: str = None):
-            raw_content = ctx.message.content
-            if raw_content.startswith("!reply"):
-                tweet = raw_content[len("!reply"):].strip()
-            if not tweet or len(tweet.strip()) < 10:
-                await ctx.send("Usage: !reply <paste the tweet text>")
-                return
-            tweet_lower = tweet.strip().lower()
-            if tweet_lower.startswith("http://") or tweet_lower.startswith("https://") or tweet_lower.startswith("www.") or tweet_lower.startswith("x.com/") or tweet_lower.startswith("twitter.com/"):
-                await ctx.send("That looks like a URL. Paste the actual tweet text instead.")
-                return
-            await ctx.send("Drafting 3 replies...")
-            try:
-                drafts = await asyncio.get_event_loop().run_in_executor(None, generate_reply_drafts, tweet)
-                preview = tweet if len(tweet) < 280 else tweet[:277] + "..."
-                response = "**Source tweet:**\n> " + preview + "\n\n**Drafts:**\n" + drafts + "\n\n_Pick one, edit, post._"
-                if len(response) <= 2000:
-                    await ctx.send(response)
-                else:
-                    await ctx.send(response[:1997] + "...")
-                    await ctx.send(response[1997:])
-            except Exception as e:
-                await ctx.send("Draft error: " + str(e)[:500])
-                print("[COMMANDS] draftreply error: " + str(e))
-
-        @bot.command(name="post")
-        async def tweetcmd(ctx, *, topic: str = None):
-            raw_content = ctx.message.content
-            if raw_content.startswith("!post"):
-                topic = raw_content[len("!post"):].strip()
-            if not topic or len(topic.strip()) < 5:
-                await ctx.send("Usage: !post <what you want to tweet about>\nExample: !post NQ swept Asia high and ripped 200pts")
-                return
-            await ctx.send("Drafting 3 tweet options...")
-            try:
-                drafts = await asyncio.get_event_loop().run_in_executor(None, generate_tweet_drafts, topic)
-                preview = topic if len(topic) < 280 else topic[:277] + "..."
-                response = "**Topic:** " + preview + "\n\n**Drafts:**\n" + drafts + "\n\n_Pick one, edit, post._"
-                if len(response) <= 2000:
-                    await ctx.send(response)
-                else:
-                    await ctx.send(response[:1997] + "...")
-                    await ctx.send(response[1997:])
-            except Exception as e:
-                await ctx.send("Tweet error: " + str(e)[:500])
-                print("[COMMANDS] tweet error: " + str(e))
-
-        @bot.command(name="thread")
-        async def threadcmd(ctx, *, topic: str = None):
-            raw_content = ctx.message.content
-            if raw_content.startswith("!thread"):
-                topic = raw_content[len("!thread"):].strip()
-            if not topic or len(topic.strip()) < 5:
-                await ctx.send("Usage: !thread <thread topic>\nExample: !thread how iFVGs form and why they matter")
-                return
-            await ctx.send("Drafting a thread... (this takes a few seconds)")
-            try:
-                thread = await asyncio.get_event_loop().run_in_executor(None, generate_thread, topic)
-                response = "**Thread topic:** " + topic + "\n\n" + thread + "\n\n_Copy each tweet separately. Post one at a time, reply-chain them on X._"
-                if len(response) <= 2000:
-                    await ctx.send(response)
-                else:
-                    # Split across messages
-                    chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
-                    for chunk in chunks:
-                        await ctx.send(chunk)
-            except Exception as e:
-                await ctx.send("Thread error: " + str(e)[:500])
-                print("[COMMANDS] thread error: " + str(e))
-
         @bot.command(name="hook")
         async def hookcmd(ctx, *, topic: str = None):
             raw_content = ctx.message.content
@@ -3567,58 +3496,6 @@ def start_command_listener():
                 await ctx.send("Check error: " + str(e)[:500])
                 print("[COMMANDS] check error: " + str(e))
 
-        @bot.command(name="bias")
-        async def biascmd(ctx, *, args: str = None):
-            raw_content = ctx.message.content
-            if raw_content.startswith("!bias"):
-                args = raw_content[len("!bias"):].strip()
-            if not args or len(args.strip()) < 5:
-                await ctx.send(
-                    "**Usage:** `!bias direction:long mo:26800 ifvg:26750 target:27000 notes:your read`\n\n"
-                    "**Example:**\n"
-                    "`!bias direction:long mo:26750 ifvg:26720 target:27000 notes:sweep of overnight low then reclaim of MO`\n\n"
-                    "All fields optional. More detail = better drafts."
-                )
-                return
-            await ctx.send("Drafting 3 bias options...")
-            try:
-                drafts = await asyncio.get_event_loop().run_in_executor(None, generate_bias_tweets, args)
-                response = "**Bias input:** " + args + "\n\n**Drafts:**\n" + drafts + "\n\n_Pick one, post before 9am ET._"
-                if len(response) <= 2000:
-                    await ctx.send(response)
-                else:
-                    await ctx.send(response[:1997] + "...")
-                    await ctx.send(response[1997:])
-            except Exception as e:
-                await ctx.send("Bias error: " + str(e)[:500])
-                print("[COMMANDS] bias error: " + str(e))
-
-        @bot.command(name="recap")
-        async def recapcmd(ctx, *, args: str = None):
-            raw_content = ctx.message.content
-            if raw_content.startswith("!recap"):
-                args = raw_content[len("!recap"):].strip()
-            if not args or len(args.strip()) < 5:
-                await ctx.send(
-                    "**Usage:** `!recap wins:1 losses:1 pnl:+420 notes:short off 9:45 sweep worked`\n\n"
-                    "**Example:**\n"
-                    "`!recap wins:2 losses:0 pnl:+850 notes:both longs from iFVG reclaim, clean day`\n\n"
-                    "Fields: `wins`, `losses`, `pnl`, `notes` (all optional but more = better)."
-                )
-                return
-            await ctx.send("Drafting 3 recap options...")
-            try:
-                drafts = await asyncio.get_event_loop().run_in_executor(None, generate_recap_tweets, args)
-                response = "**Trade data:** " + args + "\n\n**Drafts:**\n" + drafts + "\n\n_Attach your P&L screenshot when you post._"
-                if len(response) <= 2000:
-                    await ctx.send(response)
-                else:
-                    await ctx.send(response[:1997] + "...")
-                    await ctx.send(response[1997:])
-            except Exception as e:
-                await ctx.send("Recap error: " + str(e)[:500])
-                print("[COMMANDS] recap error: " + str(e))
-
         @bot.command(name="replybait")
         async def replybaitcmd(ctx, *, topic: str = None):
             raw_content = ctx.message.content
@@ -3638,28 +3515,7 @@ def start_command_listener():
                 await ctx.send("Replybait error: " + str(e)[:500])
                 print("[COMMANDS] replybait error: " + str(e))
 
-        @bot.command(name="smokeyhelp")
-        async def smokeyhelp(ctx):
-            msg = (
-                "**Smokey Bias Bot Commands**\n\n"
-                "**Bot triggers (test the scheduled posts)**\n"
-                "`!testbias` - fire morning bias now\n"
-                "`!testnyo` - fire NYO update now\n"
-                "`!testeod` - fire EOD score now\n"
-                "`!testnews` - fire macro news now\n"
-                "`!testbotw` - fire Bias of the Week\n"
-                "`!testrecap` - fire Weekly Recap\n\n"
-                "**Tweet helpers**\n"
-                "`!reply <tweet text>` - 3 reply options to someone else's tweet\n"
-                "`!post <topic>` - 3 original tweet drafts\n"
-                "`!thread <topic>` - draft a 4-6 tweet thread\n"
-                "`!hook <topic>` - 5 opening-line options\n"
-                "`!check <your tweet>` - honest critique before you post\n"
-                "`!bias <direction:long mo:X ifvg:Y target:Z notes:...>` - 3 morning bias drafts\n"
-                "`!recap <wins:N losses:N pnl:+X notes:...>` - 3 end-of-day recap drafts\n"
-                "`!replybait [optional topic]` - 5 engagement-focused post ideas\n"
-            )
-            await ctx.send(msg)
+        # NOTE: !smokeyhelp is defined in tweet_prompts.py to avoid duplicates
 
         register_tweet_commands(bot)
         try:
