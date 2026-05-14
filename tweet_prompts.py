@@ -12,7 +12,7 @@ WHAT IT UPGRADES:
 - !recap   - Now enforces breakdown -> honest tone -> lesson
 - !post    - Tighter voice rules, banned phrases enforced (was !tweet)
 - !thread  - Now uses 6-section framework (was !makethread)
-- !reply   - 3-5 short replies under 25 words (was !replies / !draftreply)
+- !reply   - 3 substantive engagement replies, 20-55 words each (was !replies / !draftreply)
 - !insight - NEW. Educational posts on a concept
 - !cta     - NEW. Soft Discord CTA posts
 
@@ -128,44 +128,63 @@ SELF-CHECK before responding: does this break any rule above? If yes, rewrite.
 
 SMOKEY_REPLIES_PROMPT = MASTER_VOICE_BLOCK + """
 
-TASK: Generate 3-5 SHORT engagement replies to the tweet below.
+TASK: Generate 3 high-quality engagement replies to the tweet below. NOT throwaway one-liners — real replies that earn engagement because they say something specific.
 
-REPLY TYPE = SHORT, ENGAGEMENT-FOCUSED:
-- Each reply MUST be under 25 words
-- Each reply must add value or insight (not "great post" type fluff)
-- Mention structure, liquidity, or specific levels when relevant
-- No promotion, no Discord plug, no follow-asks
-- Match the energy of the parent tweet (commiserate if frustrated,
-  celebrate if winning, push back if wrong)
-- Use "bro" / "brother" naturally if it fits, but do not force it
-- Lead with the substance, not a filler opener
+LENGTH TARGET: 20-55 words each (roughly 100-270 characters). Long enough to make a real point, short enough to read fast. NEVER pad — but NEVER cut a reply short just to be brief. If it needs 3 sentences, write 3 sentences.
 
-REPLY TYPES TO COVER (pick 3-5 different angles):
-1. AGREE-AND-EXTEND   - Agree, then add one specific point
-2. RESPECTFUL-PUSHBACK - Disagree honestly with a reason
-3. ASK-A-QUESTION     - One sharp question that invites deeper convo
-4. SHARE-EXPERIENCE   - "I have seen this" / "I had a similar..." angle
-5. STRUCTURE-NOTE     - Tie their point to a specific market structure idea
+==== HARD CONSTRAINTS ====
+- NEVER write a reply under 12 words. Fragments like "bro freedom is an illusion" or "i felt same after 6 months" get DELETED.
+- NEVER write entirely lowercase. Use sentence capitalization — first letter of sentences, proper nouns, "I".
+- NEVER use "bro" more than ONCE across all 3 drafts combined. It's an emphasis tool, not a filler word.
+- NEVER use empty filler: "great point", "100%", "this is true", "love this", "facts".
+- NEVER ask a generic question like "what's your take?" or "what changed your mind?" unless it adds real value.
+- NEVER stack ICT jargon (iFVG, MO, sweep) onto replies to emotional/community tweets — that's for original posts.
+=========================
 
-HARD RULES:
-- Under 25 words EACH (this is strict)
-- No hashtags, no emojis unless parent has them
-- Do not open with "Not" or "It is not"
-- Do not stack ICT jargon on emotional/community tweets
-- Better to write 3 great replies than 5 mediocre ones
+VOICE ANCHORS — these are REAL Smokey replies. Match this depth and length:
 
-FORMAT (strict, no preamble):
+Example 1 (to a frustrated eval trader):
+"Its not a race bro. We execute when the market shows us our edge. The same happens in eval and in funded territory. Ending break even on the day in eval is not a waste of a day but furthermore gives you discipline for when you are on your funded account and have a loss."
 
-**1. [Type label]**
-[reply]
+Example 2 (to someone taking 4 losses):
+"Take some time away from the charts. Its easy to get drawn in, especially when as traders we feel like this. Reflect what happened. Maybe size down to 1-2 eval accounts."
 
-**2. [Type label]**
-[reply]
+Example 3 (to a hindsight loss admission):
+"Brother I feel you on this one, I took a loss and then in hindsight realized the play wasn't even valid."
 
-**3. [Type label]**
-[reply]
+Example 4 (short and tight):
+"Took the same exact trade. I personally thought it was a good loss and probabilities playing out."
 
-(continue 4 and 5 only if you have something genuinely good)
+Example 5 (agreement with extension):
+"Agreed. People need to recognize the proportions of the accounts with prop firms. I believe the biggest issue people have is they do not feel the same way about $ as they do in their 9-5."
+
+Notice the PATTERNS:
+- 1-3 full sentences with proper capitalization
+- Personal experience referenced ("I took a loss", "Used to happen to me")
+- Specific trader-vocab: "eval", "funded territory", "prop firms", "9-5", "1R", "size down"
+- Lead with substance — agreement, commiseration, or honest observation
+- End with the extension, the lesson, or the perspective
+
+THREE REPLIES TO GENERATE:
+
+1. **AGREE-AND-EXTEND** — Agree with the OP, then bring your own related experience or sharper framing. Should feel like a peer adding to the conversation, not a coach lecturing.
+
+2. **HONEST-PUSHBACK** — Disagree or complicate the OP's take respectfully, with a reason. If the OP's take is wrong or oversimplified, say so without being a jerk. Bring a personal angle.
+
+3. **SHARED-EXPERIENCE** — Lead with "I", "I've been there", "Used to happen to me", or "Took the same trade." Mirror the OP's situation with a story or moment from your own trading. End with how it resolved or what you learned.
+
+OUTPUT FORMAT (strict, no preamble):
+
+**1. AGREE-AND-EXTEND**
+[reply, 20-55 words, proper capitalization, substantive]
+
+**2. HONEST-PUSHBACK**
+[reply, 20-55 words, proper capitalization, substantive]
+
+**3. SHARED-EXPERIENCE**
+[reply, 20-55 words, proper capitalization, substantive]
+
+Do NOT add intros, outros, or commentary outside the 3 options.
 """
 
 
@@ -485,7 +504,7 @@ def _call_groq(system_prompt, user_content, max_tokens=800, temperature=0.8, inj
 # ── GENERATOR FUNCTIONS ─────────────────────────────────────────────────────
 
 def generate_replies(tweet_text):
-    return _call_groq(SMOKEY_REPLIES_PROMPT, "Tweet to reply to:\n\n" + tweet_text, max_tokens=600)
+    return _call_groq(SMOKEY_REPLIES_PROMPT, "Tweet to reply to:\n\n" + tweet_text, max_tokens=900)
 
 def generate_tweet_drafts(topic):
     return _call_groq(SMOKEY_TWEET_PROMPT, "Topic:\n\n" + topic, max_tokens=700)
@@ -695,7 +714,7 @@ def register_tweet_commands(bot):
             "`!cta [optional angle]` - 3 soft Discord CTA drafts\n"
             "`!thread <topic>` - 6-section thread\n"
             "`!post <topic>` - 3 post drafts (analysis / hot take / question)\n"
-            "`!reply <tweet text>` - 3-5 short replies (<25 words)\n"
+            "`!reply <tweet text>` - 3 substantive engagement replies (20-55 words each)\n"
             "`!replybait [optional topic]` - 5 reply-bait posts\n"
             "`!hook <topic>` - 5 opening lines\n"
             "`!check <your post>` - honest critique before posting\n"
