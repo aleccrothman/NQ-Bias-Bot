@@ -167,7 +167,7 @@ def run_verse_of_the_day():
 # Optional: if set, bot listens for !test* commands in Discord
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
 
-# Optional: if set, enables !draftreply command
+# Optional: if set, enables !reply command
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 # ── Bot Avatar URLs ───────────────────────────────────────────────────────────
@@ -3453,13 +3453,13 @@ def start_command_listener():
         async def testnews(ctx):
             await fire_job(ctx, run_news_job, "Macro News")
 
-        @bot.command(name="draftreply")
+        @bot.command(name="reply")
         async def draftreply(ctx, *, tweet: str = None):
             raw_content = ctx.message.content
-            if raw_content.startswith("!draftreply"):
-                tweet = raw_content[len("!draftreply"):].strip()
+            if raw_content.startswith("!reply"):
+                tweet = raw_content[len("!reply"):].strip()
             if not tweet or len(tweet.strip()) < 10:
-                await ctx.send("Usage: !draftreply <paste the tweet text>")
+                await ctx.send("Usage: !reply <paste the tweet text>")
                 return
             tweet_lower = tweet.strip().lower()
             if tweet_lower.startswith("http://") or tweet_lower.startswith("https://") or tweet_lower.startswith("www.") or tweet_lower.startswith("x.com/") or tweet_lower.startswith("twitter.com/"):
@@ -3479,13 +3479,13 @@ def start_command_listener():
                 await ctx.send("Draft error: " + str(e)[:500])
                 print("[COMMANDS] draftreply error: " + str(e))
 
-        @bot.command(name="tweet")
+        @bot.command(name="post")
         async def tweetcmd(ctx, *, topic: str = None):
             raw_content = ctx.message.content
-            if raw_content.startswith("!tweet"):
-                topic = raw_content[len("!tweet"):].strip()
+            if raw_content.startswith("!post"):
+                topic = raw_content[len("!post"):].strip()
             if not topic or len(topic.strip()) < 5:
-                await ctx.send("Usage: !tweet <what you want to tweet about>\nExample: !tweet NQ swept Asia high and ripped 200pts")
+                await ctx.send("Usage: !post <what you want to tweet about>\nExample: !post NQ swept Asia high and ripped 200pts")
                 return
             await ctx.send("Drafting 3 tweet options...")
             try:
@@ -3501,13 +3501,13 @@ def start_command_listener():
                 await ctx.send("Tweet error: " + str(e)[:500])
                 print("[COMMANDS] tweet error: " + str(e))
 
-        @bot.command(name="makethread")
+        @bot.command(name="thread")
         async def threadcmd(ctx, *, topic: str = None):
             raw_content = ctx.message.content
             if raw_content.startswith("!thread"):
                 topic = raw_content[len("!thread"):].strip()
             if not topic or len(topic.strip()) < 5:
-                await ctx.send("Usage: !makethread <thread topic>\nExample: !makethread how iFVGs form and why they matter")
+                await ctx.send("Usage: !thread <thread topic>\nExample: !thread how iFVGs form and why they matter")
                 return
             await ctx.send("Drafting a thread... (this takes a few seconds)")
             try:
@@ -3545,15 +3545,15 @@ def start_command_listener():
                 await ctx.send("Hook error: " + str(e)[:500])
                 print("[COMMANDS] hook error: " + str(e))
 
-        @bot.command(name="roast")
+        @bot.command(name="check")
         async def roastcmd(ctx, *, tweet: str = None):
             raw_content = ctx.message.content
-            if raw_content.startswith("!roast"):
-                tweet = raw_content[len("!roast"):].strip()
+            if raw_content.startswith("!check"):
+                tweet = raw_content[len("!check"):].strip()
             if not tweet or len(tweet.strip()) < 10:
-                await ctx.send("Usage: !roast <the tweet you're about to post>\nExample: !roast NQ bullish above 26800, targeting buyside liquidity")
+                await ctx.send("Usage: !check <the tweet you're about to post>\nExample: !check NQ bullish above 26800, targeting buyside liquidity")
                 return
-            await ctx.send("Roasting...")
+            await ctx.send("Checking...")
             try:
                 roast = await asyncio.get_event_loop().run_in_executor(None, generate_roast, tweet)
                 preview = tweet if len(tweet) < 280 else tweet[:277] + "..."
@@ -3564,22 +3564,8 @@ def start_command_listener():
                     await ctx.send(response[:1997] + "...")
                     await ctx.send(response[1997:])
             except Exception as e:
-                await ctx.send("Roast error: " + str(e)[:500])
-                print("[COMMANDS] roast error: " + str(e))
-
-            await ctx.send("Drafting 3 replies...")
-            try:
-                drafts = await asyncio.get_event_loop().run_in_executor(None, generate_reply_drafts, tweet)
-                preview = tweet if len(tweet) < 280 else tweet[:277] + "..."
-                response = "**Source tweet:**\n> " + preview + "\n\n**Drafts:**\n" + drafts + "\n\n_Pick one, edit, post._"
-                if len(response) <= 2000:
-                    await ctx.send(response)
-                else:
-                    await ctx.send(response[:1997] + "...")
-                    await ctx.send(response[1997:])
-            except Exception as e:
-                await ctx.send("Draft error: " + str(e)[:500])
-                print("[COMMANDS] draftreply error: " + str(e))
+                await ctx.send("Check error: " + str(e)[:500])
+                print("[COMMANDS] check error: " + str(e))
 
         @bot.command(name="bias")
         async def biascmd(ctx, *, args: str = None):
@@ -3664,11 +3650,11 @@ def start_command_listener():
                 "`!testbotw` - fire Bias of the Week\n"
                 "`!testrecap` - fire Weekly Recap\n\n"
                 "**Tweet helpers**\n"
-                "`!draftreply <tweet text>` - 3 reply options to someone else's tweet\n"
-                "`!tweet <topic>` - 3 original tweet drafts\n"
-                "`!makethread <topic>` - draft a 4-6 tweet thread\n"
+                "`!reply <tweet text>` - 3 reply options to someone else's tweet\n"
+                "`!post <topic>` - 3 original tweet drafts\n"
+                "`!thread <topic>` - draft a 4-6 tweet thread\n"
                 "`!hook <topic>` - 5 opening-line options\n"
-                "`!roast <your tweet>` - honest critique before you post\n"
+                "`!check <your tweet>` - honest critique before you post\n"
                 "`!bias <direction:long mo:X ifvg:Y target:Z notes:...>` - 3 morning bias drafts\n"
                 "`!recap <wins:N losses:N pnl:+X notes:...>` - 3 end-of-day recap drafts\n"
                 "`!replybait [optional topic]` - 5 engagement-focused post ideas\n"
