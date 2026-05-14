@@ -2765,10 +2765,137 @@ FORMAT your response EXACTLY like this, no preamble:
 [reply]
 """
 
-def _call_groq(system_prompt, user_content, max_tokens=800, temperature=0.8):
-    """Shared Groq caller. Returns response text or error string."""
+def build_smokey_context():
+    """Real session data from local files — injected into every tweet prompt
+    so the AI uses real numbers instead of inventing them."""
+    lines = []
+    now_et = datetime.now(ET)
+    lines.append("=== CURRENT REAL-WORLD CONTEXT (use these facts, do not invent) ===")
+    lines.append("Today: " + now_et.strftime("%A, %B %d, %Y"))
+    lines.append("Time now: " + now_et.strftime("%-I:%M %p ET"))
+
+    # Today's bias state
+    try:
+        load_today_state()
+        today_iso = now_et.strftime("%Y-%m-%d")
+        if today_state.get("date") == today_iso and today_state.get("bias"):
+            lines.append("")
+            lines.append("TODAY'S BIAS (already called this morning):")
+            lines.append("- Direction: " + str(today_state.get("bias", "n/a")).upper())
+            lines.append("- Bias score: " + str(today_state.get("score", "n/a")) + "/3")
+            mo = today_state.get("midnight_open")
+            if mo:
+                lines.append("- Midnight Open: " + fmt(mo, 0))
+            ah = today_state.get("asia_high"); al = today_state.get("asia_low")
+            if ah and al:
+                lines.append("- Asia H/L: " + fmt(ah, 0) + " / " + fmt(al, 0))
+            lh = today_state.get("london_high"); ll = today_state.get("london_low")
+            if lh and ll:
+                lines.append("- London H/L: " + fmt(lh, 0) + " / " + fmt(ll, 0))
+            pdh = today_state.get("pdh"); pdl = today_state.get("pdl")
+            if pdh and pdl:
+                lines.append("- PDH/PDL: " + fmt(pdh, 0) + " / " + fmt(pdl, 0))
+        else:
+            lines.append("")
+            lines.append("TODAY'S BIAS: not yet called (pre-market) - do not invent numbers")
+    except Exception as _e:
+        print("[CONTEXT] today_state read failed: " + str(_e))
+
+    # Current price
+    try:
+        cp = get_current_price()
+        if cp:
+            lines.append("- Current NQ price: " + fmt(cp, 0))
+    except Exception:
+        pass
+
+    # EOD result if scored today
+    try:
+        wr = load_winrate()
+        history = wr.get("history", [])
+        today_iso = now_et.strftime("%Y-%m-%d")
+        today_result = None
+        for r in reversed(history):
+            if r.get("date") == today_iso:
+                today_result = r
+                break
+        if today_result:
+            result_map = {"W": "DELIVERED", "L": "FAILED", "C": "CHOPPY", "N": "NEUTRAL"}
+            lines.append("")
+            lines.append("EOD RESULT (already scored today):")
+            lines.append("- " + str(today_result.get("bias", "n/a")).upper() +
+                         " bias -> " + result_map.get(today_result.get("result", ""), "?"))
+    except Exception as _e:
+        print("[CONTEXT] winrate read failed: " + str(_e))
+
+    # Recent track record
+    try:
+        wr = load_winrate()
+        wins = wr.get("wins", 0); losses = wr.get("losses", 0); neutrals = wr.get("neutrals", 0)
+        total = wins + losses
+        history = wr.get("history", [])
+        last_5 = history[-5:] if history else []
+        if last_5:
+            streak = "".join(r.get("result", "?") for r in last_5)
+            lines.append("")
+            lines.append("RECENT TRACK RECORD:")
+            lines.append("- Last 5 days: " + streak + "  (W=Win  L=Loss  C=Choppy)")
+            lines.append("- All-time: " + str(wins) + "W " + str(losses) + "L " + str(neutrals) + "C")
+            if total >= 10:
+                pct = round(wins / total * 100)
+                lines.append("- Win rate: " + str(pct) + "% over " + str(total) + " directional days")
+    except Exception:
+        pass
+
+    # Vision flag
+    try:
+        vlog = Path("/data/vision_verifications.jsonl")
+        if vlog.exists():
+            today_iso = now_et.strftime("%Y-%m-%d")
+            recent = []
+            with open(vlog) as f:
+                for line in f:
+                    try:
+                        entry = json.loads(line)
+                        if entry.get("date_et") == today_iso:
+                            recent.append(entry)
+                    except Exception:
+                        continue
+            if recent:
+                last = recent[-1]
+                v = last.get("verification", {})
+                read = v.get("chart_read")
+                agrees = v.get("agrees_with_system")
+                flag = last.get("flag")
+                if flag or agrees is False:
+                    lines.append("")
+                    lines.append("VISION CHECK (Opus 4.7 read of today's chart):")
+                    if read:
+                        lines.append("- Vision sees: " + str(read).upper())
+                    if flag:
+                        lines.append("- Flag: " + str(flag))
+    except Exception:
+        pass
+
+    lines.append("")
+    lines.append("=== END CONTEXT - use these real numbers when relevant ===")
+    return "\n".join(lines)
+
+
+def _call_groq(system_prompt, user_content, max_tokens=800, temperature=0.8, inject_context=True):
+    """Shared Groq caller with optional real-session context injection."""
     if not GROQ_API_KEY:
         return "GROQ_API_KEY not set in Railway env vars."
+
+    if inject_context:
+        try:
+            full_system = build_smokey_context() + "\n\n" + system_prompt
+        except Exception as _e:
+            print("[CONTEXT] build failed, using plain prompt: " + str(_e))
+            full_system = system_prompt
+    else:
+        full_system = system_prompt
+
     try:
         resp = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
@@ -2779,7 +2906,7 @@ def _call_groq(system_prompt, user_content, max_tokens=800, temperature=0.8):
             json={
                 "model": "llama-3.3-70b-versatile",
                 "messages": [
-                    {"role": "system", "content": system_prompt},
+                    {"role": "system", "content": full_system},
                     {"role": "user", "content": user_content},
                 ],
                 "temperature": temperature,
@@ -2988,8 +3115,8 @@ FORMAT:
 
 
 def generate_roast(tweet_text):
-    """Critique a draft tweet."""
-    return _call_groq(SMOKEY_ROAST_PROMPT, "Tweet to critique:\n\n" + tweet_text, max_tokens=800, temperature=0.5)
+    """Critique a draft tweet. Skips context — roast is about the draft itself."""
+    return _call_groq(SMOKEY_ROAST_PROMPT, "Tweet to critique:\n\n" + tweet_text, max_tokens=800, temperature=0.5, inject_context=False)
 
 
 # ============================================================================
