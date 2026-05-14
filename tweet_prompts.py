@@ -10,14 +10,14 @@ smokey_bias_bot.py in your repo, then make ONE small change to that file
 WHAT IT UPGRADES:
 - !bias    - Now enforces a clean 5-line template
 - !recap   - Now enforces breakdown -> honest tone -> lesson
-- !tweet   - Tighter voice rules, banned phrases enforced
-- !makethread - Now uses 6-section framework
-- !replies - (renamed from !draftreply) 3-5 short replies under 25 words
+- !post    - Tighter voice rules, banned phrases enforced (was !tweet)
+- !thread  - Now uses 6-section framework (was !makethread)
+- !reply   - 3-5 short replies under 25 words (was !replies / !draftreply)
 - !insight - NEW. Educational posts on a concept
 - !cta     - NEW. Soft Discord CTA posts
 
 WHAT IT KEEPS THE SAME:
-- !hook, !roast, !replybait - unchanged
+- !hook, !check, !replybait - unchanged (!check was !roast, renamed in main file)
 - All test commands (!testbias, !testnyo, etc.) - unchanged
 - Data fetching, scheduler, vision verification - untouched
 
@@ -433,10 +433,31 @@ FORMAT (strict, no preamble):
 
 # ── GROQ CALLER ─────────────────────────────────────────────────────────────
 
-def _call_groq(system_prompt, user_content, max_tokens=800, temperature=0.8):
-    """Shared Groq caller. Returns response text or error string."""
+def _build_context():
+    """Try to import and call the context builder from smokey_bias_bot.
+    Returns empty string if unavailable (safe fallback)."""
+    try:
+        from smokey_bias_bot import build_smokey_context
+        return build_smokey_context()
+    except Exception as e:
+        print("[TWEET_PROMPTS] Context import failed (using plain prompt): " + str(e))
+        return ""
+
+
+def _call_groq(system_prompt, user_content, max_tokens=800, temperature=0.8, inject_context=True):
+    """Shared Groq caller. Returns response text or error string.
+
+    inject_context=True (default) prepends real session data so the AI uses
+    real numbers instead of inventing them."""
     if not GROQ_API_KEY:
         return "GROQ_API_KEY not set in Railway env vars."
+
+    if inject_context:
+        ctx = _build_context()
+        full_system = (ctx + "\n\n" + system_prompt) if ctx else system_prompt
+    else:
+        full_system = system_prompt
+
     try:
         resp = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
@@ -447,7 +468,7 @@ def _call_groq(system_prompt, user_content, max_tokens=800, temperature=0.8):
             json={
                 "model": "llama-3.3-70b-versatile",
                 "messages": [
-                    {"role": "system", "content": system_prompt},
+                    {"role": "system", "content": full_system},
                     {"role": "user", "content": user_content},
                 ],
                 "temperature": temperature,
@@ -513,13 +534,13 @@ def register_tweet_commands(bot):
             await ctx.send(response[:1997] + "...")
             await ctx.send(response[1997:])
 
-    @bot.command(name="replies")
+    @bot.command(name="reply")
     async def repliescmd(ctx, *, tweet: str = None):
         raw_content = ctx.message.content
-        if raw_content.startswith("!replies"):
-            tweet = raw_content[len("!replies"):].strip()
+        if raw_content.startswith("!reply"):
+            tweet = raw_content[len("!reply"):].strip()
         if not tweet or len(tweet.strip()) < 10:
-            await ctx.send("Usage: !replies <paste the tweet text>")
+            await ctx.send("Usage: !reply <paste the tweet text>")
             return
         tl = tweet.strip().lower()
         if tl.startswith(("http://", "https://", "www.", "x.com/", "twitter.com/")):
@@ -532,34 +553,34 @@ def register_tweet_commands(bot):
             response = "**Source tweet:**\n> " + preview + "\n\n**Drafts:**\n" + drafts + "\n\n_Pick one, post._"
             await _send_long(ctx, response)
         except Exception as e:
-            await ctx.send("Replies error: " + str(e)[:500])
-            print("[COMMANDS] replies error: " + str(e))
+            await ctx.send("Reply error: " + str(e)[:500])
+            print("[COMMANDS] reply error: " + str(e))
 
-    @bot.command(name="tweet")
+    @bot.command(name="post")
     async def tweetcmd(ctx, *, topic: str = None):
         raw_content = ctx.message.content
-        if raw_content.startswith("!tweet"):
-            topic = raw_content[len("!tweet"):].strip()
+        if raw_content.startswith("!post"):
+            topic = raw_content[len("!post"):].strip()
         if not topic or len(topic.strip()) < 5:
-            await ctx.send("Usage: !tweet <topic>\nExample: !tweet NQ swept Asia high and ripped 200pts")
+            await ctx.send("Usage: !post <topic>\nExample: !post NQ swept Asia high and ripped 200pts")
             return
-        await ctx.send("Drafting 3 tweet options...")
+        await ctx.send("Drafting 3 post options...")
         try:
             drafts = await asyncio.get_event_loop().run_in_executor(None, generate_tweet_drafts, topic)
             preview = topic if len(topic) < 280 else topic[:277] + "..."
             response = "**Topic:** " + preview + "\n\n**Drafts:**\n" + drafts + "\n\n_Pick one, edit, post._"
             await _send_long(ctx, response)
         except Exception as e:
-            await ctx.send("Tweet error: " + str(e)[:500])
-            print("[COMMANDS] tweet error: " + str(e))
+            await ctx.send("Post error: " + str(e)[:500])
+            print("[COMMANDS] post error: " + str(e))
 
-    @bot.command(name="makethread")
+    @bot.command(name="thread")
     async def threadcmd(ctx, *, topic: str = None):
         raw_content = ctx.message.content
-        if raw_content.startswith("!makethread"):
-            topic = raw_content[len("!makethread"):].strip()
+        if raw_content.startswith("!thread"):
+            topic = raw_content[len("!thread"):].strip()
         if not topic or len(topic.strip()) < 5:
-            await ctx.send("Usage: !makethread <topic>\nExample: !makethread how iFVGs form and why they matter")
+            await ctx.send("Usage: !thread <topic>\nExample: !thread how iFVGs form and why they matter")
             return
         await ctx.send("Drafting a 6-section thread... (a few seconds)")
         try:
@@ -667,17 +688,17 @@ def register_tweet_commands(bot):
             "`!testnews` - fire macro news now\n"
             "`!testbotw` - fire Bias of the Week\n"
             "`!testrecap` - fire Weekly Recap\n\n"
-            "**Tweet drafting (upgraded)**\n"
+            "**Tweet drafting**\n"
             "`!bias direction:long mo:X ifvg:Y target:Z notes:...` - 3 morning bias drafts (5-line template)\n"
             "`!recap wins:N losses:N pnl:+X notes:...` - 3 EOD recap drafts (breakdown -> honest -> lesson)\n"
             "`!insight <concept>` - 3 educational posts\n"
             "`!cta [optional angle]` - 3 soft Discord CTA drafts\n"
-            "`!makethread <topic>` - 6-section thread\n"
-            "`!tweet <topic>` - 3 tweet drafts (analysis / hot take / question)\n"
-            "`!replies <tweet text>` - 3-5 short replies (<25 words)\n"
+            "`!thread <topic>` - 6-section thread\n"
+            "`!post <topic>` - 3 post drafts (analysis / hot take / question)\n"
+            "`!reply <tweet text>` - 3-5 short replies (<25 words)\n"
             "`!replybait [optional topic]` - 5 reply-bait posts\n"
             "`!hook <topic>` - 5 opening lines\n"
-            "`!roast <your tweet>` - honest critique before posting\n"
+            "`!check <your post>` - honest critique before posting\n"
         )
         await ctx.send(msg)
 
