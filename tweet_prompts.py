@@ -664,24 +664,32 @@ def _call_groq_vision(system_prompt, user_text, image_b64, mime_type, max_tokens
 
 
 # Step 1: Vision model classifies the image into one of three intents
-VISION_ROUTER_PROMPT = """You are an intent classifier for trading-related images. Look at the image and classify it into EXACTLY ONE of these three categories. Output ONLY the category name on the first line, then a brief reason on line 2.
+VISION_ROUTER_PROMPT = """You are an image classifier. You MUST output exactly two lines in the format below. Do not write any other text. Do not greet, explain, or add notes.
 
-CATEGORIES:
+OUTPUT FORMAT (mandatory, copy this format EXACTLY):
+CATEGORY: CHART
+REASON: short description
 
-1. CHART
-   The image shows a price chart, candlestick chart, TradingView screenshot, or any market/structure visualization. Has price axis, candles, levels, indicators, or session highlights.
+Replace CHART with the correct category. Categories you can choose from:
 
-2. PNL
-   The image shows a profit/loss screen, account dashboard, trade journal, Tradovate/MFFU/Topstep performance card, or P&L summary. Has dollar amounts, win/loss counts, account balances, or trade history.
+- CHART = price chart, candlestick chart, TradingView screenshot, any market/structure visualization, anything with a price axis and candles/bars
+- PNL = profit/loss screen, account dashboard, Tradovate/MFFU/Topstep/prop firm performance card, trade journal, P&L summary with dollar amounts and account balances
+- TWEET = screenshot of a social media post (X/Twitter, Threads, LinkedIn, Reddit) showing someone's written text content, with username/handle visible
 
-3. TWEET
-   The image is a screenshot of a social media post (X/Twitter, Threads, LinkedIn, Reddit, etc.) showing someone else's text. Has avatar, username, timestamp, or a body of written content from a user.
+If unsure, pick the closest match. NEVER output "UNKNOWN" - always pick one of the three.
 
-OUTPUT FORMAT (strict, two lines only):
-CATEGORY: [CHART or PNL or TWEET]
-REASON: [one short sentence describing what you see]
+Examples of correct outputs:
 
-No other text, no preamble."""
+CATEGORY: CHART
+REASON: NQ futures candlestick chart with price levels and session marks
+
+CATEGORY: PNL
+REASON: Trading account balance card showing daily P&L
+
+CATEGORY: TWEET
+REASON: Screenshot of an X post with username and timestamp
+
+Now classify the attached image. Output ONLY the two lines."""
 
 
 # Step 2a: Chart description prompt - extract everything the post-writer needs
@@ -730,12 +738,34 @@ Reproduce the post text as accurately as you can read it. No commentary."""
 
 
 def vision_route(image_b64, mime_type, user_hint=""):
-    """Classify the image. Returns (category, reason)."""
+    """Classify the image. Returns (category, reason).
+    Honors user hint shortcuts first (e.g. user types 'chart' → skip vision call).
+    Falls back to fuzzy keyword matching if the model doesn't follow format."""
+
+    # 1. User-hint shortcut — if user explicitly said the type, trust them
+    if user_hint:
+        hint_lower = user_hint.lower()
+        # Check first 30 chars for explicit type keywords (most natural place)
+        hint_start = hint_lower[:30]
+        if any(kw in hint_start for kw in ["chart", "tradingview", "setup", "candles", "nq chart", "price action"]):
+            print("[VISION] User hint indicates CHART, skipping route call")
+            return "CHART", "User indicated chart in hint"
+        if any(kw in hint_start for kw in ["pnl", "p&l", "p/l", "recap", "eod", "payout", "account", "balance"]):
+            print("[VISION] User hint indicates PNL, skipping route call")
+            return "PNL", "User indicated P&L in hint"
+        if any(kw in hint_start for kw in ["tweet", "reply", "post screenshot", "x post", "twitter"]):
+            print("[VISION] User hint indicates TWEET, skipping route call")
+            return "TWEET", "User indicated tweet in hint"
+
+    # 2. Call vision router
     user_text = "Classify this image."
     if user_hint:
         user_text += "\nUser's hint: " + user_hint
     raw = _call_groq_vision(VISION_ROUTER_PROMPT, user_text, image_b64, mime_type, max_tokens=200, temperature=0.2)
-    category = "UNKNOWN"
+    print("[VISION] Router raw output: " + raw[:300])
+
+    # 3. Strict parse first
+    category = None
     reason = ""
     for line in raw.splitlines():
         line = line.strip()
@@ -747,6 +777,24 @@ def vision_route(image_b64, mime_type, user_hint=""):
                     break
         elif line.upper().startswith("REASON:"):
             reason = line.split(":", 1)[1].strip()
+
+    # 4. Fuzzy fallback — scan whole response for category keywords
+    if not category:
+        upper_raw = raw.upper()
+        # Count occurrences to pick most-mentioned category
+        scores = {
+            "CHART": upper_raw.count("CHART") + upper_raw.count("CANDLE") + upper_raw.count("PRICE ACTION") + upper_raw.count("TRADINGVIEW") + upper_raw.count("PRICE AXIS"),
+            "PNL": upper_raw.count("P&L") + upper_raw.count("PNL") + upper_raw.count("PROFIT") + upper_raw.count("DOLLAR AMOUNT") + upper_raw.count("ACCOUNT BALANCE") + upper_raw.count("PAYOUT"),
+            "TWEET": upper_raw.count("TWEET") + upper_raw.count("TWITTER") + upper_raw.count("SOCIAL MEDIA") + upper_raw.count("USERNAME") + upper_raw.count("AVATAR") + upper_raw.count(" POST"),
+        }
+        if max(scores.values()) > 0:
+            category = max(scores, key=scores.get)
+            reason = "Fuzzy-matched from response (strict format not followed)"
+            print("[VISION] Fuzzy fallback selected: " + category + " (scores: " + str(scores) + ")")
+        else:
+            category = "UNKNOWN"
+            reason = "Could not determine category from response"
+
     return category, reason
 
 
@@ -768,18 +816,25 @@ def process_ai_command(image_url, user_hint=""):
     """Full pipeline: fetch image → route → describe → draft posts.
     Returns a formatted Discord-ready response string."""
     # 1. Fetch image
+    print("[VISION] Fetching image from: " + image_url[:120])
     b64, mime_or_err = _fetch_image_as_base64(image_url)
     if b64 is None:
+        print("[VISION] Fetch failed: " + str(mime_or_err))
         return "Could not load that image. " + mime_or_err
     mime_type = mime_or_err
+    print("[VISION] Image loaded. Size: " + str(len(b64)) + " base64 chars, type: " + mime_type)
 
     # 2. Classify
+    print("[VISION] Routing image to category...")
     category, reason = vision_route(b64, mime_type, user_hint)
+    print("[VISION] Category: " + category + " | Reason: " + reason)
     if category == "UNKNOWN":
         return "Could not classify the image. Try adding a hint like 'chart', 'pnl', or 'tweet' after !ai"
 
     # 3. Extract facts
+    print("[VISION] Extracting facts (category=" + category + ")...")
     facts = vision_describe(b64, mime_type, category, user_hint)
+    print("[VISION] Facts extracted (" + str(len(facts)) + " chars)")
 
     # 4. Route to the right generator based on category
     if category == "CHART":
@@ -1003,9 +1058,12 @@ def register_tweet_commands(bot):
         """Universal image command: attach a chart, P&L screenshot, or tweet
         screenshot. The bot auto-detects what kind of image it is and routes
         to the right draft generator. Optional text after !ai gives context."""
+        # Strip command prefix case-insensitively so !ai, !AI, !Ai all work
         raw_content = ctx.message.content
-        if raw_content.startswith("!ai"):
-            hint = raw_content[len("!ai"):].strip()
+        lower_content = raw_content.lower()
+        if lower_content.startswith("!ai"):
+            hint = raw_content[3:].strip()  # strip "!ai" / "!AI" / etc.
+        print("[COMMANDS] !ai invoked. hint=" + str(hint or "(none)") + " | attachments=" + str(len(ctx.message.attachments)))
 
         # Find an image attachment
         if not ctx.message.attachments:
@@ -1027,6 +1085,7 @@ def register_tweet_commands(bot):
             filename = (att.filename or "").lower()
             if content_type.startswith("image/") or filename.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
                 image_url = att.url
+                print("[COMMANDS] !ai using image: " + att.filename + " (" + content_type + ")")
                 break
 
         if not image_url:
@@ -1040,8 +1099,11 @@ def register_tweet_commands(bot):
             )
             await _send_long(ctx, response)
         except Exception as e:
-            await ctx.send("AI command error: " + str(e)[:500])
+            import traceback
+            tb = traceback.format_exc()
             print("[COMMANDS] ai error: " + str(e))
+            print(tb)
+            await ctx.send("AI command error: " + str(e)[:500])
 
     # Override smokeyhelp with the full command list
     @bot.command(name="smokeyhelp")
