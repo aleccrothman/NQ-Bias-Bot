@@ -52,6 +52,7 @@ automatically. You don't need to delete anything from the old file.
 
 import os
 import asyncio
+import base64
 import requests
 
 
@@ -603,6 +604,231 @@ def generate_cta_post(angle=""):
     return _call_groq(SMOKEY_CTA_PROMPT, user_msg, max_tokens=700, temperature=0.8)
 
 
+# ── VISION SUPPORT (image input via Groq Llama 4 Scout) ────────────────────
+
+GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+
+
+def _fetch_image_as_base64(image_url):
+    """Download a Discord attachment URL and return base64-encoded bytes.
+    Returns (base64_string, mime_type) or (None, error_message)."""
+    try:
+        resp = requests.get(image_url, timeout=15)
+        resp.raise_for_status()
+        content_type = resp.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
+        if content_type not in ["image/jpeg", "image/png", "image/gif", "image/webp"]:
+            content_type = "image/jpeg"  # safe fallback
+        b64 = base64.b64encode(resp.content).decode("utf-8")
+        return b64, content_type
+    except Exception as e:
+        return None, "Image fetch failed: " + str(e)
+
+
+def _call_groq_vision(system_prompt, user_text, image_b64, mime_type, max_tokens=900, temperature=0.7):
+    """Call Groq vision model with an image + text prompt."""
+    if not GROQ_API_KEY:
+        return "GROQ_API_KEY not set in Railway env vars."
+    try:
+        resp = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": "Bearer " + GROQ_API_KEY,
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": GROQ_VISION_MODEL,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": user_text},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": "data:" + mime_type + ";base64," + image_b64
+                                },
+                            },
+                        ],
+                    },
+                ],
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            },
+            timeout=45,
+        )
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        return "Vision error: " + str(e)
+
+
+# Step 1: Vision model classifies the image into one of three intents
+VISION_ROUTER_PROMPT = """You are an intent classifier for trading-related images. Look at the image and classify it into EXACTLY ONE of these three categories. Output ONLY the category name on the first line, then a brief reason on line 2.
+
+CATEGORIES:
+
+1. CHART
+   The image shows a price chart, candlestick chart, TradingView screenshot, or any market/structure visualization. Has price axis, candles, levels, indicators, or session highlights.
+
+2. PNL
+   The image shows a profit/loss screen, account dashboard, trade journal, Tradovate/MFFU/Topstep performance card, or P&L summary. Has dollar amounts, win/loss counts, account balances, or trade history.
+
+3. TWEET
+   The image is a screenshot of a social media post (X/Twitter, Threads, LinkedIn, Reddit, etc.) showing someone else's text. Has avatar, username, timestamp, or a body of written content from a user.
+
+OUTPUT FORMAT (strict, two lines only):
+CATEGORY: [CHART or PNL or TWEET]
+REASON: [one short sentence describing what you see]
+
+No other text, no preamble."""
+
+
+# Step 2a: Chart description prompt - extract everything the post-writer needs
+VISION_CHART_DESCRIBE_PROMPT = """You are reading an NQ futures chart for a trader. Extract the FACTS that a tweet-writer needs to describe what happened. Be concrete and specific.
+
+Output the following sections. If you can't determine something, write "unclear" — never guess.
+
+DIRECTION: [bullish / bearish / chop / undetermined]
+KEY LEVELS VISIBLE: [list any clear price levels, MO line, session H/L, iFVG zones, liquidity pools — actual numbers if readable]
+PRICE ACTION: [describe the main move in 1-2 sentences — sweep, displacement, reclaim, fakeout, etc.]
+SESSION TIMING: [if visible — NY Open, London, Asia, ATH conditions, etc.]
+NOTABLE STRUCTURE: [iFVGs, FVGs, equal highs/lows, BOS, anything ICT-relevant]
+TRADE CONTEXT: [if entries/exits are marked on chart, describe them]
+
+Keep it to facts only. No tweet-writing yet."""
+
+
+# Step 2b: P&L extraction prompt
+VISION_PNL_DESCRIBE_PROMPT = """You are reading a trader's P&L screen / account dashboard. Extract the FACTS for a recap tweet. Be precise with numbers.
+
+Output the following sections. If you can't determine something, write "unclear".
+
+NET P&L: [exact dollar amount with + or -]
+WINS: [number of winning trades, if visible]
+LOSSES: [number of losing trades, if visible]
+WIN RATE: [percentage, if visible]
+ACCOUNT TYPE: [eval / funded / live / unclear]
+PROP FIRM: [MFFU, Topstep, Tradovate, etc. if visible]
+TIME PERIOD: [today / this week / month / all-time / unclear]
+NOTABLE DETAILS: [anything else relevant — drawdown, payout eligibility, account size]
+
+Numbers only. No interpretation. No tweet-writing yet."""
+
+
+# Step 2c: Tweet extraction prompt
+VISION_TWEET_DESCRIBE_PROMPT = """You are reading a screenshot of a social media post. Extract the TEXT of the post exactly as written, plus minimal context.
+
+Output the following:
+
+AUTHOR: [username/handle if visible, else "unknown"]
+PLATFORM: [X, Threads, LinkedIn, Reddit, etc. if determinable]
+POST TEXT: [the exact text of the post — preserve their wording, line breaks, and tone]
+TONE: [frustrated / celebratory / asking / informative / contrarian / etc. — one word]
+
+Reproduce the post text as accurately as you can read it. No commentary."""
+
+
+def vision_route(image_b64, mime_type, user_hint=""):
+    """Classify the image. Returns (category, reason)."""
+    user_text = "Classify this image."
+    if user_hint:
+        user_text += "\nUser's hint: " + user_hint
+    raw = _call_groq_vision(VISION_ROUTER_PROMPT, user_text, image_b64, mime_type, max_tokens=200, temperature=0.2)
+    category = "UNKNOWN"
+    reason = ""
+    for line in raw.splitlines():
+        line = line.strip()
+        if line.upper().startswith("CATEGORY:"):
+            value = line.split(":", 1)[1].strip().upper()
+            for opt in ["CHART", "PNL", "TWEET"]:
+                if opt in value:
+                    category = opt
+                    break
+        elif line.upper().startswith("REASON:"):
+            reason = line.split(":", 1)[1].strip()
+    return category, reason
+
+
+def vision_describe(image_b64, mime_type, category, user_hint=""):
+    """Extract facts from the image based on its category."""
+    prompts = {
+        "CHART": VISION_CHART_DESCRIBE_PROMPT,
+        "PNL": VISION_PNL_DESCRIBE_PROMPT,
+        "TWEET": VISION_TWEET_DESCRIBE_PROMPT,
+    }
+    prompt = prompts.get(category, VISION_CHART_DESCRIBE_PROMPT)
+    user_text = "Extract the facts from this image."
+    if user_hint:
+        user_text += "\nUser's hint: " + user_hint
+    return _call_groq_vision(prompt, user_text, image_b64, mime_type, max_tokens=900, temperature=0.3)
+
+
+def process_ai_command(image_url, user_hint=""):
+    """Full pipeline: fetch image → route → describe → draft posts.
+    Returns a formatted Discord-ready response string."""
+    # 1. Fetch image
+    b64, mime_or_err = _fetch_image_as_base64(image_url)
+    if b64 is None:
+        return "Could not load that image. " + mime_or_err
+    mime_type = mime_or_err
+
+    # 2. Classify
+    category, reason = vision_route(b64, mime_type, user_hint)
+    if category == "UNKNOWN":
+        return "Could not classify the image. Try adding a hint like 'chart', 'pnl', or 'tweet' after !ai"
+
+    # 3. Extract facts
+    facts = vision_describe(b64, mime_type, category, user_hint)
+
+    # 4. Route to the right generator based on category
+    if category == "CHART":
+        # Use the facts as the topic for a tweet draft
+        topic_input = "Chart-based post. Here is what the chart shows:\n\n" + facts
+        if user_hint:
+            topic_input += "\n\nUser's added context: " + user_hint
+        drafts = generate_tweet_drafts(topic_input)
+        header = "**Image detected:** CHART  \n*" + reason + "*\n\n**What I see:**\n```\n" + facts + "\n```\n\n**Drafts:**\n"
+        return header + drafts + "\n\n_Pick one, post._"
+
+    elif category == "PNL":
+        # Use facts as recap input
+        recap_input = "P&L screenshot. Here are the extracted numbers:\n\n" + facts
+        if user_hint:
+            recap_input += "\n\nUser's added context: " + user_hint
+        drafts = generate_recap_tweets(recap_input)
+        header = "**Image detected:** P&L  \n*" + reason + "*\n\n**Extracted:**\n```\n" + facts + "\n```\n\n**Recap drafts:**\n"
+        return header + drafts + "\n\n_Attach this screenshot when you post._"
+
+    elif category == "TWEET":
+        # Extract the post text and feed it to the replies generator
+        post_text = ""
+        for line in facts.splitlines():
+            if line.strip().upper().startswith("POST TEXT:"):
+                post_text = line.split(":", 1)[1].strip()
+                # Also grab any continuation lines until next ALL-CAPS header
+                idx = facts.find(line) + len(line)
+                rest = facts[idx:].strip()
+                for next_line in rest.splitlines():
+                    if next_line.strip() == "":
+                        continue
+                    # Stop at next header (uppercase word followed by colon)
+                    stripped = next_line.strip()
+                    if ":" in stripped and stripped.split(":", 1)[0].isupper() and len(stripped.split(":", 1)[0]) < 25:
+                        break
+                    post_text += " " + stripped
+                break
+        if not post_text:
+            post_text = facts  # fall back to whole extraction
+        if user_hint:
+            post_text += "\n\n(User's added context: " + user_hint + ")"
+        drafts = generate_replies(post_text)
+        header = "**Image detected:** TWEET  \n*" + reason + "*\n\n**Source post (extracted):**\n> " + post_text[:500] + "\n\n**Reply drafts:**\n"
+        return header + drafts + "\n\n_Pick one, post as a reply._"
+
+    return "Could not generate drafts. Try again or add a hint."
+
+
 # ── COMMAND REGISTRATION ────────────────────────────────────────────────────
 # Called from the main bot file inside run_bot() to register all upgraded
 # commands. Existing duplicates in the main file will be silently overridden
@@ -772,6 +998,51 @@ def register_tweet_commands(bot):
             await ctx.send("CTA error: " + str(e)[:500])
             print("[COMMANDS] cta error: " + str(e))
 
+    @bot.command(name="ai")
+    async def aicmd(ctx, *, hint: str = None):
+        """Universal image command: attach a chart, P&L screenshot, or tweet
+        screenshot. The bot auto-detects what kind of image it is and routes
+        to the right draft generator. Optional text after !ai gives context."""
+        raw_content = ctx.message.content
+        if raw_content.startswith("!ai"):
+            hint = raw_content[len("!ai"):].strip()
+
+        # Find an image attachment
+        if not ctx.message.attachments:
+            await ctx.send(
+                "Attach an image with `!ai` and I'll auto-detect what to do with it.\n\n"
+                "**What it handles:**\n"
+                "- **Chart screenshot** → drafts a post about the setup\n"
+                "- **P&L / dashboard screenshot** → drafts an EOD recap\n"
+                "- **Someone else's tweet** → drafts replies\n\n"
+                "Optional: add text after `!ai` to give me extra context.\n"
+                "Example: `!ai end of day, took 2R on the long`"
+            )
+            return
+
+        # Use first image attachment found
+        image_url = None
+        for att in ctx.message.attachments:
+            content_type = (att.content_type or "").lower()
+            filename = (att.filename or "").lower()
+            if content_type.startswith("image/") or filename.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
+                image_url = att.url
+                break
+
+        if not image_url:
+            await ctx.send("No image attachment found. Attach a PNG, JPG, or screenshot.")
+            return
+
+        await ctx.send("Reading the image and drafting... (10-15 seconds)")
+        try:
+            response = await asyncio.get_event_loop().run_in_executor(
+                None, process_ai_command, image_url, hint or ""
+            )
+            await _send_long(ctx, response)
+        except Exception as e:
+            await ctx.send("AI command error: " + str(e)[:500])
+            print("[COMMANDS] ai error: " + str(e))
+
     # Override smokeyhelp with the full command list
     @bot.command(name="smokeyhelp")
     async def smokeyhelp(ctx):
@@ -785,6 +1056,7 @@ def register_tweet_commands(bot):
             "`!testbotw` - fire Bias of the Week\n"
             "`!testrecap` - fire Weekly Recap\n\n"
             "**Tweet drafting**\n"
+            "`!ai [optional context] + attached image` - auto-routes chart/P&L/tweet screenshots\n"
             "`!bias direction:long mo:X ifvg:Y target:Z notes:...` - 3 morning bias drafts (5-line template)\n"
             "`!recap wins:N losses:N pnl:+X notes:...` - 3 EOD recap drafts (breakdown -> honest -> lesson)\n"
             "`!insight <concept>` - 3 educational posts\n"
