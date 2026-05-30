@@ -1,1 +1,1 @@
-worker: python nq_bias_bot.py
+worker: python smokey_bias_bot.py
