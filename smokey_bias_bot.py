@@ -42,6 +42,9 @@ TELEGRAM_BOT_TOKEN  = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID    = os.getenv("TELEGRAM_CHAT_ID", "")
 TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "-1003726448503")
 
+# ── Telegram disabled (broadcast to Discord only). Flip to True to restore. ──
+TELEGRAM_ENABLED = os.getenv("TELEGRAM_ENABLED", "false").lower() == "true"
+
 TV_USERNAME  = os.getenv("TV_USERNAME", "")
 TV_PASSWORD  = os.getenv("TV_PASSWORD", "")
 TV_CHART_URL = "https://www.tradingview.com/chart/hcbriKzA/"  # Your saved 15m NQ chart
@@ -1307,6 +1310,8 @@ def compress_screenshot(image_path):
 # TELEGRAM
 
 def send_telegram_photo(image_path, caption):
+    if not TELEGRAM_ENABLED:
+        return
     if not image_path or not image_path.exists():
         print("  -> No screenshot file found, sending text only")
         send_telegram_text(caption)
@@ -1355,6 +1360,8 @@ def send_telegram_photo(image_path, caption):
     print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Photo sent.")
 
 def send_telegram_text(message):
+    if not TELEGRAM_ENABLED:
+        return
     url = "https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendMessage"
     for chat_id in [TELEGRAM_CHAT_ID, TELEGRAM_CHANNEL_ID]:
         if not chat_id:
