@@ -54,6 +54,9 @@ DISCORD_WEBHOOK_BIAS  = os.getenv("DISCORD_WEBHOOK_BIAS",  "")
 DISCORD_WEBHOOK_NYO   = os.getenv("DISCORD_WEBHOOK_NYO",   "")
 DISCORD_WEBHOOK_EOD   = os.getenv("DISCORD_WEBHOOK_EOD",   "")
 DISCORD_WEBHOOK_XDRAFTS = os.getenv("DISCORD_WEBHOOK_XDRAFTS", "")
+
+# ── Auto X-drafts paused (manual !post/!thread still work). Flip to True to restore. ──
+XDRAFTS_ENABLED = os.getenv("XDRAFTS_ENABLED", "false").lower() == "true"
 DISCORD_WEBHOOK_ERRORS = os.getenv("DISCORD_WEBHOOK_ERRORS", "")
 
 # ── Verse of the Day ──────────────────────────────────────────────────────────
@@ -1432,10 +1435,46 @@ def send_discord_embed(embed, image_path=None, webhook=None, avatar_url=None):
                     timeout=30,
                 )
         else:
-            requests.post(url, json=payload, timeout=10)
+            _post_with_retry(url, json=payload, timeout=10, label="Discord embed")
         print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Discord embed sent.")
     except Exception as e:
         print("  -> Discord embed send error: " + str(e))
+
+
+def _post_with_retry(url, *, json=None, data=None, files=None, timeout=10, max_attempts=3, label="Discord"):
+    """POST to a webhook with retry + backoff. Returns the Response or None.
+
+    - Retries on network errors and 5xx responses (transient).
+    - Honors Discord 429 rate limits using the retry_after value.
+    - Does NOT retry on other 4xx (those are our bug, not transient).
+    Never raises; logs and returns None if all attempts fail.
+    """
+    backoff = 2
+    for attempt in range(1, max_attempts + 1):
+        try:
+            resp = requests.post(url, json=json, data=data, files=files, timeout=timeout)
+            if resp.status_code == 429:
+                try:
+                    retry_after = float(resp.json().get("retry_after", backoff))
+                except Exception:
+                    retry_after = backoff
+                print("  -> " + label + " rate limited, waiting " + str(retry_after) + "s")
+                time.sleep(min(retry_after, 30))
+                continue
+            if 500 <= resp.status_code < 600:
+                print("  -> " + label + " server error " + str(resp.status_code) + " (attempt " + str(attempt) + "/" + str(max_attempts) + ")")
+                if attempt < max_attempts:
+                    time.sleep(backoff); backoff *= 2
+                    continue
+                return resp
+            return resp  # 2xx or non-retryable 4xx
+        except Exception as e:
+            print("  -> " + label + " network error (attempt " + str(attempt) + "/" + str(max_attempts) + "): " + str(e))
+            if attempt < max_attempts:
+                time.sleep(backoff); backoff *= 2
+                continue
+            return None
+    return None
 
 
 def send_error_alert(label, err):
@@ -1453,10 +1492,10 @@ def send_error_alert(label, err):
             "footer": {"text": "SmokeyNQ bot \u2022 automated error alert"},
             "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         }
-        requests.post(
+        _post_with_retry(
             DISCORD_WEBHOOK_ERRORS,
             json={"username": "SmokeyNQ Errors", "embeds": [embed]},
-            timeout=10,
+            timeout=10, label="Error alert",
         )
     except Exception as e:
         print("  -> Failed to send error alert: " + str(e))
@@ -1475,7 +1514,7 @@ def send_discord_raw(content, image_path=None, webhook=None):
                 requests.post(url, data={"content": content},
                     files={"file": ("chart.jpg", img, "image/jpeg")}, timeout=30)
         else:
-            requests.post(url, json={"content": content}, timeout=10)
+            _post_with_retry(url, json={"content": content}, timeout=10, label="Discord")
         print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] Discord sent.")
     except Exception as e:
         print("  -> Discord send error: " + str(e))
@@ -1677,10 +1716,12 @@ def send_discord(message, image_path=None):
 
 def send_tweet(text):
     """Send draft tweet to #x-drafts Discord channel for easy copy-paste posting."""
+    if not XDRAFTS_ENABLED:
+        return
     if DISCORD_WEBHOOK_XDRAFTS:
         try:
             draft_msg = "**\U0001f426 X Draft \u2014 ready to copy & post:**\n" + "```" + "\n" + text + "\n" + "```"
-            requests.post(DISCORD_WEBHOOK_XDRAFTS, json={"content": draft_msg}, timeout=10)
+            _post_with_retry(DISCORD_WEBHOOK_XDRAFTS, json={"content": draft_msg}, timeout=10, label="X draft")
             print("[" + datetime.now(ET).strftime("%H:%M:%S ET") + "] X draft posted to Discord.")
         except Exception as e:
             print("  -> X draft error: " + str(e))
@@ -3161,6 +3202,8 @@ def generate_replybait_posts(topic):
 # ============================================================================
 def run_bias_reminder():
     """Post a reminder in #x-drafts every weekday morning to run !bias."""
+    if not XDRAFTS_ENABLED:
+        return
     if not DISCORD_WEBHOOK_XDRAFTS:
         print("[bias_reminder] DISCORD_WEBHOOK_XDRAFTS not set - skipping reminder")
         return
@@ -3171,7 +3214,7 @@ def run_bias_reminder():
             "`!bias direction:long mo:XXXXX ifvg:XXXXX target:XXXXX notes:your read`\n\n"
             "Post the draft you pick to X before 9am ET for max engagement."
         )
-        requests.post(DISCORD_WEBHOOK_XDRAFTS, json={"content": reminder_msg}, timeout=10)
+        _post_with_retry(DISCORD_WEBHOOK_XDRAFTS, json={"content": reminder_msg}, timeout=10, label="Bias reminder")
         print("[bias_reminder] Morning reminder sent")
     except Exception as e:
         print("[bias_reminder] Error: " + str(e))
@@ -3257,6 +3300,18 @@ def start_command_listener():
         @bot.command(name="testnews")
         async def testnews(ctx):
             await fire_job(ctx, run_news_job, "Macro News")
+
+        @bot.command(name="testerror")
+        async def testerror(ctx):
+            if not DISCORD_WEBHOOK_ERRORS:
+                await ctx.send("DISCORD_WEBHOOK_ERRORS not set — alert would only print to logs.")
+                return
+            await ctx.send("Firing a test error alert to the errors channel...")
+            try:
+                send_error_alert("Test Alert", "This is a test — error alerting is live.")
+                await ctx.send("Sent. Check the errors channel.")
+            except Exception as e:
+                await ctx.send("Test error alert failed: " + str(e)[:500])
 
         @bot.command(name="hook")
         async def hookcmd(ctx, *, topic: str = None):
