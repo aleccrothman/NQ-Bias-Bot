@@ -54,6 +54,7 @@ DISCORD_WEBHOOK_BIAS  = os.getenv("DISCORD_WEBHOOK_BIAS",  "")
 DISCORD_WEBHOOK_NYO   = os.getenv("DISCORD_WEBHOOK_NYO",   "")
 DISCORD_WEBHOOK_EOD   = os.getenv("DISCORD_WEBHOOK_EOD",   "")
 DISCORD_WEBHOOK_XDRAFTS = os.getenv("DISCORD_WEBHOOK_XDRAFTS", "")
+DISCORD_WEBHOOK_ERRORS = os.getenv("DISCORD_WEBHOOK_ERRORS", "")
 
 # ── Verse of the Day ──────────────────────────────────────────────────────────
 DISCORD_WEBHOOK_ANNOUNCEMENTS = os.getenv("DISCORD_WEBHOOK_ANNOUNCEMENTS", "")
@@ -643,7 +644,7 @@ def run_news_job():
         send_discord_embed(news_embed, webhook=DISCORD_WEBHOOK_NEWS, avatar_url=AVATAR_NEWS)
     except Exception as e:
         try:
-            send_telegram_text("<b>News Error:</b> " + str(e))
+            send_error_alert("News Error", e)
         except Exception:
             pass
 
@@ -1437,6 +1438,30 @@ def send_discord_embed(embed, image_path=None, webhook=None, avatar_url=None):
         print("  -> Discord embed send error: " + str(e))
 
 
+def send_error_alert(label, err):
+    """Post a job failure to the #bot-errors Discord webhook.
+    Falls back to a plain log line if no webhook is configured. Never raises."""
+    msg = "[" + datetime.now(ET).strftime("%Y-%m-%d %H:%M ET") + "] " + label + ": " + str(err)
+    print("  -> ERROR ALERT: " + msg)
+    if not DISCORD_WEBHOOK_ERRORS:
+        return
+    try:
+        embed = {
+            "title": "\u26a0\ufe0f " + label,
+            "description": "```" + str(err)[:1800] + "```",
+            "color": 0xE74C3C,
+            "footer": {"text": "SmokeyNQ bot \u2022 automated error alert"},
+            "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+        requests.post(
+            DISCORD_WEBHOOK_ERRORS,
+            json={"username": "SmokeyNQ Errors", "embeds": [embed]},
+            timeout=10,
+        )
+    except Exception as e:
+        print("  -> Failed to send error alert: " + str(e))
+
+
 def send_discord_raw(content, image_path=None, webhook=None):
     """Send a plain text message to Discord webhook (used for news/EOD)."""
     url = webhook or DISCORD_WEBHOOK_BIAS
@@ -1946,7 +1971,7 @@ def run_morning_bias():
 
     except Exception as e:
         try:
-            send_telegram_text("<b>Morning Bias Error:</b> " + str(e))
+            send_error_alert("Morning Bias Error", e)
         except Exception:
             pass
 
@@ -2046,7 +2071,7 @@ def run_nyo_update():
         send_tweet(nyo_tweet)
     except Exception as e:
         try:
-            send_telegram_text("<b>NYO Update Error:</b> " + str(e))
+            send_error_alert("NYO Update Error", e)
         except Exception:
             pass
 
@@ -2153,7 +2178,7 @@ def run_eod_score():
         send_tweet(eod_tweet)
     except Exception as e:
         try:
-            send_telegram_text("<b>EOD Score Error:</b> " + str(e))
+            send_error_alert("EOD Score Error", e)
         except Exception:
             pass
 
@@ -2292,7 +2317,7 @@ def run_weekend_recap():
 
     except Exception as e:
         try:
-            send_telegram_text("<b>Weekend Recap Error:</b> " + str(e))
+            send_error_alert("Weekend Recap Error", e)
         except Exception:
             pass
 
@@ -2341,7 +2366,7 @@ def run_weekly_performance():
         send_telegram_text(msg)
     except Exception as e:
         try:
-            send_telegram_text("<b>Weekly Performance Error:</b> " + str(e))
+            send_error_alert("Weekly Performance Error", e)
         except Exception:
             pass
 
@@ -2396,7 +2421,7 @@ def run_monthly_report():
 
     except Exception as e:
         try:
-            send_telegram_text("<b>Monthly Report Error:</b> " + str(e))
+            send_error_alert("Monthly Report Error", e)
         except Exception:
             pass
 
@@ -2477,7 +2502,7 @@ def run_trade_of_week():
 
     except Exception as e:
         try:
-            send_telegram_text("<b>Trade of Week Error:</b> " + str(e))
+            send_error_alert("Trade of Week Error", e)
         except Exception:
             pass
 
@@ -3396,6 +3421,7 @@ def main():
                         job_fn()
                     except Exception as e:
                         print("[SCHEDULER] Error in " + job_key + ": " + str(e))
+                        send_error_alert("Scheduler / " + job_key, e)
 
         time.sleep(30)
 
