@@ -1477,6 +1477,26 @@ def _post_with_retry(url, *, json=None, data=None, files=None, timeout=10, max_a
     return None
 
 
+# ── Website bias feed (smokeynq.com landing page card) ───────────────────────
+# Set BIAS_PUSH_SECRET on BOTH Railway services (same value). If it's unset
+# here, pushing is skipped. A failed push never affects Discord/X posts.
+SITE_BIAS_URL    = os.getenv("SITE_BIAS_URL", "https://smokeynq.com/api/bias")
+BIAS_PUSH_SECRET = os.getenv("BIAS_PUSH_SECRET", "")
+
+
+def push_to_site(payload):
+    if not BIAS_PUSH_SECRET:
+        print("  -> Site push skipped (BIAS_PUSH_SECRET not set)")
+        return
+    try:
+        payload["date"] = datetime.now(ET).strftime("%Y-%m-%d")
+        resp = requests.post(SITE_BIAS_URL, json=payload,
+                             headers={"X-Bias-Secret": BIAS_PUSH_SECRET}, timeout=8)
+        print("  -> Site push (" + str(payload.get("kind")) + "): " + str(resp.status_code))
+    except Exception as e:
+        print("  -> Site push failed: " + str(e))
+
+
 def send_error_alert(label, err):
     """Post a job failure to the #bot-errors Discord webhook.
     Falls back to a plain log line if no webhook is configured. Never raises."""
@@ -1992,6 +2012,21 @@ def run_morning_bias():
         grade = bias.get("grade", "C")
         if grade == "A" and ifvgs:
             grade = "A+"
+
+        # Website landing-page card
+        push_to_site({
+            "kind": "morning",
+            "direction": bias["direction"],
+            "grade": grade,
+            "target_detail": bias.get("target_detail", ""),
+            "midnight_open": midnight_open,
+            "asia_high": asia_high, "asia_low": asia_low,
+            "london_high": london_high, "london_low": london_low,
+            "pdh": pdh, "pdl": pdl,
+            "has_ifvg": bool(ifvgs),
+            "posted_at": datetime.now(ET).strftime("%H:%M ET"),
+        })
+
         if screenshot and screenshot.exists():
             send_telegram_photo(screenshot, caption)
         else:
@@ -2207,6 +2242,18 @@ def run_eod_score():
             result_type = "choppy"
 
         winrate_data = record_result_v2(direction, result_type)
+
+        # Website landing-page card
+        push_to_site({
+            "kind": "eod",
+            "result_type": result_type,
+            "price_diff": round(price_diff, 2),
+            "wins": winrate_data.get("wins"),
+            "losses": winrate_data.get("losses"),
+            "neutrals": winrate_data.get("neutrals"),
+            "streak": "".join(r.get("result", "") for r in winrate_data.get("history", [])[-10:]),
+        })
+
         # Telegram (HTML)
         tg_msg = build_eod_message_v2(direction, result_type, current_price, mo, price_diff, winrate_data)
         send_telegram_text(tg_msg)
