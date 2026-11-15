@@ -9,6 +9,8 @@ from datetime import datetime, time
 import pytz
 import redis
 
+_version = "smokesignals-ict2022-v1"
+
 # ── Config ────────────────────────────────────────────────────────────────────
 DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
 STRATEGY_WEBHOOK_URL = os.environ["STRATEGY_WEBHOOK_URL"]  # #smoke-signals webhook
@@ -67,8 +69,8 @@ ICT_CONCEPTS = [
         "title": "🏛️ Order Block (OB)",
         "category": "Smart Money Concepts",
         "color": 0xE74C3C,
-        "definition": "The last down-candle before a bullish impulse (bullish OB) or the last up-candle before a bearish impulse (bearish OB). Represents where institutions placed orders.",
-        "how_to_use": "Mark the body of the last opposing candle before a strong move. When price retraces to this zone, look for a reaction. Combine with FVGs inside the OB for higher confluence.",
+        "definition": "The down-close candle(s) right before a surge higher that leaves an imbalance (bullish OB), or the up-close candle(s) before a displacement lower (bearish OB). ICT calls it a change in the state of delivery, not simply the last opposing candle (2022 Mentorship, Ep 9, 12 & 18).",
+        "how_to_use": "Only mark it when the move away displaced and left an FVG. Watch three levels: the open, the mean threshold (50% of the candle), and the far extreme. For a bearish OB, the high is the least likely level to be traded to.",
         "nq_tip": "Bullish order blocks on the 15m during the NY Open that align with HTF bullish bias are among the strongest setups on NQ.",
         "timeframes": "15m · 1H · 4H",
         "type": "Entry Zone",
@@ -107,8 +109,8 @@ ICT_CONCEPTS = [
         "title": "🕐 Kill Zone (KZ)",
         "category": "Time & Price",
         "color": 0xC0392B,
-        "definition": "Specific time windows when institutional order flow is most active and high-probability setups occur. The main kill zones are London (2–5 AM ET) and NY Open (7–10 AM ET).",
-        "how_to_use": "Only take setups during kill zones. Outside these windows, price is often choppy and unpredictable. The NY Open KZ (7–10 AM ET) is the highest volume and most reliable.",
+        "definition": "Specific time windows when institutional order flow is most active and high-probability setups occur. ICT frames London as 2–5 AM ET, and in the 2022 Mentorship he hunts NY index setups from 8:30 to 11:00 AM ET, with a second window after lunch (1:30–4 PM).",
+        "how_to_use": "Only take setups inside your window. Outside it, price is often choppy. ICT: no new entries during NY lunch (12–1 PM), and expect at most 2 setups in the morning and 2 in the afternoon (2022 Mentorship, Ep 3 & 16).",
         "nq_tip": "SmokeyNQ trades the NY Open Kill Zone (9–11 AM ET). This is when NQ delivers its cleanest moves off key levels with the most follow-through.",
         "timeframes": "Intraday",
         "type": "Time Filter",
@@ -127,8 +129,8 @@ ICT_CONCEPTS = [
         "title": "🔄 Breaker Block",
         "category": "Smart Money Concepts",
         "color": 0x16A085,
-        "definition": "A failed order block — when price sweeps through an OB, takes out the liquidity, and reverses. The former OB now flips and acts as support/resistance in the opposite direction.",
-        "how_to_use": "Identify an order block that price has broken through. When price returns to that zone, it should now act as a resistance (bullish OB becomes bearish breaker) or support (bearish OB becomes bullish breaker).",
+        "definition": "A swing pattern where the opposing liquidity is taken first, e.g. a high, a low, then a higher high that runs buy stops before a break lower. The candle at the middle swing becomes the breaker when price returns to it (2022 Mentorship, Ep 10 & 37).",
+        "how_to_use": "When price trades back into the breaker, look for a reaction in the new direction. ICT expects price to mostly respect the near half of the breaker candle, and places his stop just beyond the candle.",
         "nq_tip": "Breaker blocks on NQ's 15m are powerful because they represent a trap — retail traders expect the OB to hold, but smart money has already flipped it.",
         "timeframes": "15m · 1H · 4H",
         "type": "Entry Zone",
@@ -313,6 +315,205 @@ ICT_CONCEPTS = [
         "timeframes": "5m · 15m · 1H",
         "type": "Framework",
     },
+    # ── ICT 2022 Mentorship series (paraphrased from the free YouTube mentorship) ──
+    {
+        "title": "🧭 The ICT 2022 Model — Full Sequence",
+        "category": "ICT 2022 Mentorship",
+        "color": 0x00BFFF,
+        "definition": "The one model ICT teaches across the 2022 Mentorship: know the draw on liquidity, wait for price to run a pool of stops, then a market structure shift with displacement that leaves a fair value gap.",
+        "how_to_use": "1) Mark buy-side and sell-side liquidity. 2) Wait for one side to get swept. 3) Look for displacement through the short-term swing (MSS). 4) Enter on the retrace into the FVG left behind. 5) Target the opposite liquidity.",
+        "nq_tip": "SmokeyNQ uses the same building blocks (sweep, displacement, FVG). His trigger is the iFVG, price closing through an FVG and flipping it, framed inside a higher-timeframe FVG during the 9–11 AM ET window.",
+        "timeframes": "15m bias · 5m–1m entry",
+        "type": "Entry Model",
+        "source": "ICT 2022 Mentorship · Ep 2, 3, 6, 12",
+    },
+    {
+        "title": "⏰ NY Session Windows & the Lunch Rule",
+        "category": "ICT 2022 Mentorship",
+        "color": 0xC0392B,
+        "definition": "ICT splits the index day in two: a morning session (8:30 AM–noon, best before 11), NY lunch (12–1 PM), and an afternoon session (1:30–4 PM). Time of day comes before price.",
+        "how_to_use": "No new entries during lunch. You can take profits or let a resting limit fill. Expect at most 2 setups in the AM and 2 in the PM, and don't force a fifth. Be positioned before 11 and ride into lunch.",
+        "nq_tip": "SmokeyNQ keeps it tighter: 9–11 AM ET only, one focused window, then done for the day. Same idea, less screen time and fewer chances to overtrade.",
+        "timeframes": "Intraday",
+        "type": "Time Filter",
+        "source": "ICT 2022 Mentorship · Ep 2, 3, 5, 16",
+    },
+    {
+        "title": "🧠 Daily Bias = Range Expansion From the Open",
+        "category": "ICT 2022 Mentorship",
+        "color": 0x5DADE2,
+        "definition": "ICT's answer to the most-asked question: bias is simply whether today's daily range is more likely to expand higher or lower than the opening price. You don't need to predict the close.",
+        "how_to_use": "Start with the weekly candle (higher or lower?), then use daily swing highs and lows to find the draw on liquidity. Hunt only the bias side, and stay with it until a key level is clearly taken against you.",
+        "nq_tip": "Bias is a filter, not a guarantee. If the NY open gives you nothing on your side, the right trade is no trade.",
+        "timeframes": "Weekly · Daily",
+        "type": "Framework",
+        "source": "ICT 2022 Mentorship · Ep 2, 7, 10, 18",
+    },
+    {
+        "title": "🔺 3-Candle Swing Points",
+        "category": "ICT 2022 Mentorship",
+        "color": 0x7F8C8D,
+        "definition": "A swing high is a candle whose high is above both the candle before and the candle after it; a swing low is the mirror. Just three candles.",
+        "how_to_use": "Use 3-candle swings to mark short-term highs and lows, where the stops sit. ICT says skip 5-candle fractal indicators, because by the time they print you've missed the move.",
+        "nq_tip": "The short-term swing that formed right before the sweep is the one displacement needs to break for a valid shift.",
+        "timeframes": "All timeframes",
+        "type": "Reference Level",
+        "source": "ICT 2022 Mentorship · Ep 10, 16",
+    },
+    {
+        "title": "🎯 Internal vs External Range Liquidity",
+        "category": "ICT 2022 Mentorship",
+        "color": 0x1ABC9C,
+        "definition": "External range liquidity means the stops beyond a range's high or low. Internal range liquidity means the imbalances (FVGs) inside the range. Price tends to travel from one to the other.",
+        "how_to_use": "After a run on external liquidity, expect price to reach for an internal FVG, and vice versa. On a trade, take the first partial at the internal target and hold the runner for the external one.",
+        "nq_tip": "Short from premium: first target is the move back into discount or the nearest FVG; runner aims at equal lows or the previous day's low.",
+        "timeframes": "15m · 1H",
+        "type": "Framework",
+        "source": "ICT 2022 Mentorship · Ep 3, 6",
+    },
+    {
+        "title": "🪤 Relative Equal Highs & Lows",
+        "category": "ICT 2022 Mentorship",
+        "color": 0x2980B9,
+        "definition": "Two or more highs (or lows) at nearly the same price. Retail traders read them as strong resistance or support and park stops just beyond them, so ICT treats them as engineered liquidity.",
+        "how_to_use": "Mark them on the 15m. Expect them to get run before the real move. If equal highs sit above an older single high, use the equal highs as the target.",
+        "nq_tip": "Never put your own stop just past equal highs or lows. That's exactly where the sweep happens.",
+        "timeframes": "15m · 1H · Daily",
+        "type": "Setup Trigger",
+        "source": "ICT 2022 Mentorship · Ep 2, 3, 5",
+    },
+    {
+        "title": "🏗️ Short, Intermediate & Long-Term Highs",
+        "category": "ICT 2022 Mentorship",
+        "color": 0x2ECC71,
+        "definition": "ICT's 'precision' market structure: an intermediate-term high sits between two short-term highs, and these tend to form when price rebalances an FVG. It replaces simple higher-high/higher-low thinking.",
+        "how_to_use": "If an intermediate-term high is not higher than the short-term highs around it, the market is weak. If the key swing your idea depends on gets violated, cancel the idea and don't re-force it.",
+        "nq_tip": "Ask ICT's two questions before every session: is price going up for stops or to fill an imbalance, or down for stops or to fill an imbalance?",
+        "timeframes": "1H · 15m",
+        "type": "Framework",
+        "source": "ICT 2022 Mentorship · Ep 12",
+    },
+    {
+        "title": "🎚️ Mean Threshold",
+        "category": "ICT 2022 Mentorship",
+        "color": 0xE74C3C,
+        "definition": "The 50% level of an order block candle. Together with the candle's open and its far extreme, it's one of the three sensitive levels ICT watches.",
+        "how_to_use": "Run a fib across the order block candle. A reaction at the open or mean threshold keeps the block valid. Price trading through the far extreme invalidates it.",
+        "nq_tip": "Use it like CE for order blocks: a tighter, more precise reference than the whole candle.",
+        "timeframes": "15m · 1H · Daily",
+        "type": "Reference Level",
+        "source": "ICT 2022 Mentorship · Ep 21, 35",
+    },
+    {
+        "title": "🔀 SMT Divergence (NQ vs ES)",
+        "category": "ICT 2022 Mentorship",
+        "color": 0x9B59B6,
+        "definition": "When correlated indices disagree at a swing. Example: NQ makes a lower low but ES doesn't, which hints that the stronger index is being accumulated.",
+        "how_to_use": "Overlay ES on NQ and compare the swing lows (or highs). ICT warns these show up around 8:30, 9:30 and news, then vanish as the markets resync, so SMT only helps if you already know the draw.",
+        "nq_tip": "Use it as confirmation at your level during the open, never as a stand-alone entry.",
+        "timeframes": "1m · 5m · 15m",
+        "type": "Confirmation Signal",
+        "source": "ICT 2022 Mentorship · Ep 35, 38",
+    },
+    {
+        "title": "📰 8:30 News & the Economic Calendar",
+        "category": "ICT 2022 Mentorship",
+        "color": 0xF39C12,
+        "definition": "At 8:30 AM ET the news embargo lifts and the algorithm starts seeking liquidity, sometimes waiting until the 9:30 open to hit it. ICT checks ForexFactory daily: red is high impact.",
+        "how_to_use": "Know what's on the calendar before you trade. Expect a build-up before the number and the real move after. ICT tells students to sit out FOMC and NFP and study them in hindsight instead.",
+        "nq_tip": "If a red-folder event blows up your read, close the charts and come back later. Forcing trades after an invalidated news read is how accounts get hurt.",
+        "timeframes": "Intraday",
+        "type": "Time Filter",
+        "source": "ICT 2022 Mentorship · Ep 10, 23, 25, 41",
+    },
+    {
+        "title": "🌓 Midnight Open & the Judas Move",
+        "category": "ICT 2022 Mentorship",
+        "color": 0x8E44AD,
+        "definition": "ICT frames the day off the NY midnight opening price. Bearish days ideally rally above the midnight open first (the Judas move) and then sell off; bullish days dip below it to form the low, then rally.",
+        "how_to_use": "Mark the midnight open. On a bearish bias, wait for the rally above it to fail; on a bullish bias, wait for the dip below it to reverse. If price can't even get back to the opening price, the bias side is very strong.",
+        "nq_tip": "This is the 'why' behind SmokeyNQ's Midnight Open tool: premium above it is where shorts get built, discount below it is where longs get built.",
+        "timeframes": "1m · 5m · 15m",
+        "type": "Reference Level",
+        "source": "ICT 2022 Mentorship · Ep 18, 21, 25, 38",
+    },
+    {
+        "title": "🍽️ Lunch Lows & the PM Continuation",
+        "category": "ICT 2022 Mentorship",
+        "color": 0x16A085,
+        "definition": "On a bullish day that consolidates through NY lunch, the lunch lows often get swept before the afternoon continuation higher (and the mirror when bearish). Around 3 PM the algorithm often pushes toward the remaining draw.",
+        "how_to_use": "Mark the 12–1 PM range. Wait for the sweep of the side against your bias after 1:30, then look for the shift and the FVG entry. ICT also says that after a big overnight move, skip the morning and wait for this.",
+        "nq_tip": "SmokeyNQ doesn't trade the PM; he's done by 11. This is ICT's extra window, worth knowing even if it isn't part of your routine.",
+        "timeframes": "5m · 15m",
+        "type": "Setup Trigger",
+        "source": "ICT 2022 Mentorship · Ep 9, 30",
+    },
+    {
+        "title": "🥞 Stacked FVGs",
+        "category": "ICT 2022 Mentorship",
+        "color": 0xD35400,
+        "definition": "When two fair value gaps sit one above the other, ICT enters on the one closer to price but sizes his stop so a spike into the second gap won't take him out.",
+        "how_to_use": "Note both gaps before entering. Price will often overrun a small FVG to reach a larger one, so if the near gap fails, the bigger gap is the next likely reaction.",
+        "nq_tip": "Before you place the limit, ask: if it overshoots into the next gap, does my stop survive? If not, size down or pass.",
+        "timeframes": "1m · 5m · 15m",
+        "type": "Entry Zone",
+        "source": "ICT 2022 Mentorship · Ep 21, 41",
+    },
+    {
+        "title": "📐 Fib Projection Targets",
+        "category": "ICT 2022 Mentorship",
+        "color": 0x48C9B0,
+        "definition": "ICT's swing-target method: measure the leg and project the same distance from the fulcrum swing to find a measured-move objective.",
+        "how_to_use": "Anchor the fib on the highest body (open or close, not the wick) of the leg and drag to the low, then project that distance below the fulcrum low for shorts (mirror for longs).",
+        "nq_tip": "Use projections as a runner target only after the first partial is banked at a liquidity level.",
+        "timeframes": "15m · 1H",
+        "type": "Reference Level",
+        "source": "ICT 2022 Mentorship · Ep 16",
+    },
+    {
+        "title": "🧮 Position Sizing the ICT Way",
+        "category": "ICT 2022 Mentorship",
+        "color": 0x3498DB,
+        "definition": "Size from the stop, not the other way around. ICT's example: $10,000 × 1% = $100 risk. With a 9-point stop that's about $11 a point, too small for an ES mini ($50/pt), so 2 micros ($5/pt each) = $90 risk.",
+        "how_to_use": "Risk ÷ stop distance in points = dollars per point you can afford, then divide by the contract multiplier. NQ mini is $20/pt, MNQ is $2/pt. Round down, never up.",
+        "nq_tip": "While learning, ICT says to risk well under 1% (about 0.25–0.5%). On prop accounts, size off your drawdown limit, not the account size.",
+        "timeframes": "Every trade",
+        "type": "Risk Management",
+        "source": "ICT 2022 Mentorship · Ep 7, 41",
+    },
+    {
+        "title": "🛡️ After a Loss: Cut Risk in Half",
+        "category": "ICT 2022 Mentorship",
+        "color": 0xC0392B,
+        "definition": "ICT's drawdown rule: after a loss, halve your risk (1% to 0.5%). After another loss, halve again (0.25%). Only go back to full risk once you've made back 50% of what you lost.",
+        "how_to_use": "Three straight losses then cost about 1.75% instead of 3%+ from doubling up. ICT calls revenge trading the loser's cycle, and says to treat drawdown like a loan you'll collect interest on.",
+        "nq_tip": "SmokeyNQ's own rule stacks on top: max 2 losses a day, only 1 if the loss came on an A+ setup. A loss is a business expense, not something to win back today.",
+        "timeframes": "Every session",
+        "type": "Risk Management",
+        "source": "ICT 2022 Mentorship · Ep 41",
+    },
+    {
+        "title": "🔒 When to Move Your Stop (50/75 Rule)",
+        "category": "ICT 2022 Mentorship",
+        "color": 0x27AE60,
+        "definition": "ICT's systematic stop management: when price reaches 50% of the distance to your target, trim the stop's risk by 25%. At 75% of the way, move the stop to breakeven. Not before.",
+        "how_to_use": "Jamming the stop to breakeven early gets you wicked out of good trades. Instead, keep checking: is price still reaching for the objective, and are FVGs and opposite-color candles still supporting it?",
+        "nq_tip": "Pair it with partials: bank the first piece at the internal target, then let the stop rules manage the runner.",
+        "timeframes": "Every trade",
+        "type": "Risk Management",
+        "source": "ICT 2022 Mentorship · Ep 41",
+    },
+    {
+        "title": "📓 The Study Journal",
+        "category": "ICT 2022 Mentorship",
+        "color": 0x82E0AA,
+        "definition": "ICT's core homework: build a journal of screenshot examples of the setup, marked up the same way every time.",
+        "how_to_use": "For each example, note how far price ran, how long it took, and how much drawdown an entry would have taken. Re-read it when nothing feels like it's working; seeing the pattern repeat rebuilds conviction.",
+        "nq_tip": "Backtest first, then demo, then live. ICT is blunt that watching videos isn't learning; marking up your own charts is.",
+        "timeframes": "Weekends",
+        "type": "Mindset",
+        "source": "ICT 2022 Mentorship · Ep 3, 18, 24",
+    },
 ]
 
 # ── State Management (Redis) ──────────────────────────────────────────────────
@@ -331,7 +532,9 @@ def get_next_concept():
     if len(used) >= len(ICT_CONCEPTS):
         used = []
     available = [i for i in range(len(ICT_CONCEPTS)) if i not in used]
-    idx = random.choice(available)
+    # Roll out the ICT 2022 Mentorship series first, then mix back into the full library.
+    mentorship = [i for i in available if ICT_CONCEPTS[i].get("category") == "ICT 2022 Mentorship"]
+    idx = random.choice(mentorship or available)
     used.append(idx)
     state["used_indices"] = used
     state["last_post_date"] = datetime.now(TIMEZONE).isoformat()
@@ -354,7 +557,7 @@ async def post_ict_concept():
             {"name": "🖥️ NQ Application", "value": concept["nq_tip"], "inline": False},
             {"name": "⏱️ Best Timeframes", "value": concept["timeframes"], "inline": True},
             {"name": "📅 Posted", "value": date_str, "inline": True},
-        ],
+        ] + ([{"name": "🎥 Source", "value": concept["source"], "inline": False}] if concept.get("source") else []),
         "footer": {"text": f"SmokeyNQ Education  ·  Concept {count}/{total}  ·  ICT Methodology"},
     }
 
@@ -392,7 +595,7 @@ async def test_ict(ctx):
 @commands.has_permissions(administrator=True)
 async def reset_ict(ctx):
     r.delete(REDIS_KEY)
-    await ctx.send("✅ ICT concept cycle reset — back to 0/30.")
+    await ctx.send(f"✅ ICT concept cycle reset — back to 0/{len(ICT_CONCEPTS)}.")
 
 # ── Scheduler ─────────────────────────────────────────────────────────────────
 async def scheduler():
