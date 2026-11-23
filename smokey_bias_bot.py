@@ -2607,7 +2607,7 @@ def run_catchup():
     dow     = now_et.strftime("%A")
     is_weekday = dow in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 
-    now_utc_mins = now_utc.hour * 60 + now_utc.minute
+    now_et_mins = now_et.hour * 60 + now_et.minute
 
     print("\n[CATCHUP] Bot started at " + now_et.strftime("%Y-%m-%d %H:%M ET") + " (" + str(now_utc.hour) + ":" + str(now_utc.minute).zfill(2) + " UTC)")
 
@@ -2615,22 +2615,22 @@ def run_catchup():
         print("[CATCHUP] Weekend - skipping weekday job catchup\n")
         return
 
-    # (scheduled UTC minutes, grace buffer mins, job name, function)
+    # (scheduled ET minutes, grace buffer mins, job name, function)
     catchup_jobs = [
-        (11 * 60,       5,  "news",    run_news_job),
-        (12 * 60 + 30,  5,  "morning", run_morning_bias),
-        (13 * 60,       5,  "nyo",     run_nyo_update),
-        (20 * 60,       5,  "eod",     run_eod_score),
+        (7 * 60,   5,  "news",    run_news_job),
+        (8 * 60,   5,  "morning", run_morning_bias),
+        (9 * 60,   5,  "nyo",     run_nyo_update),
+        (17 * 60,  5,  "eod",     run_eod_score),
     ]
 
     ran_any = False
     for sched_mins, grace, job_name, job_fn in catchup_jobs:
         fire_after = sched_mins + grace
-        if now_utc_mins >= fire_after:
+        if now_et_mins >= fire_after:
             if job_already_ran(job_name):
                 print("[CATCHUP] ✓ " + job_name + " already ran today at " + load_jobs_ran().get(job_name, "?") + " - skipping")
             else:
-                print("[CATCHUP] ⚡ Running missed job: " + job_name + " (scheduled " + str(sched_mins // 60) + ":" + str(sched_mins % 60).zfill(2) + " UTC)")
+                print("[CATCHUP] ⚡ Running missed job: " + job_name + " (scheduled " + str(sched_mins // 60) + ":" + str(sched_mins % 60).zfill(2) + " ET)")
                 try:
                     job_fn()
                     ran_any = True
@@ -3245,7 +3245,7 @@ def generate_replybait_posts(topic):
 
 
 # ============================================================================
-# Scheduled morning bias reminder (weekdays 8:30am ET = 12:30 UTC)
+# Scheduled morning bias reminder (weekdays 8:00 AM ET — see JOBS in main)
 # ============================================================================
 def run_bias_reminder():
     """Post a reminder in #x-drafts every weekday morning to run !bias."""
@@ -3477,19 +3477,21 @@ def main():
     # Start Discord command listener (daemon thread, no-op if no token)
     start_command_listener()
 
-    # Jobs fired by exact UTC time check every 30 seconds
-    # Format: (utc_hour, utc_minute, job_key, function, weekday_only)
+    # Jobs fired by New York (ET) clock time, checked every 30 seconds.
+    # Times are ET, so daylight saving is handled automatically year-round
+    # (previously UTC, which drifted an hour early every November).
+    # Format: (et_hour, et_minute, job_key, function, weekday_only)
     fired_today = set()  # in-memory guard against double-firing
     JOBS = [
-        (11,  0,  "news",    run_news_job,          True),
-        (12,  0,  "biasrmd", run_bias_reminder,     True),  # 8:30am ET weekday reminder to run !bias
-        (12,  0,  "morning", run_morning_bias,       True),
-        (13,  0,  "nyo",     run_nyo_update,         True),
-        (21,  0,  "eod",     run_eod_score,          True),
-        (21,  0,  "totw",    run_trade_of_week,      False),  # Friday only checked inside
-        (14,  0,  "recap",   run_weekend_recap,      False),  # Saturday only
-        (14,  0,  "weekly",  run_weekly_performance, False),  # Sunday only
-        (12, 30,  "monthly", run_monthly_report,     False),  # checks day=1 inside
+        ( 7,  0,  "news",    run_news_job,          True),   # 7:00 AM ET
+        ( 8,  0,  "biasrmd", run_bias_reminder,     True),   # 8:00 AM ET reminder to run !bias
+        ( 8,  0,  "morning", run_morning_bias,       True),   # 8:00 AM ET
+        ( 9,  0,  "nyo",     run_nyo_update,         True),   # 9:00 AM ET
+        (17,  0,  "eod",     run_eod_score,          True),   # 5:00 PM ET
+        (17,  0,  "totw",    run_trade_of_week,      False),  # Friday only checked inside
+        (10,  0,  "recap",   run_weekend_recap,      False),  # Saturday only
+        (10,  0,  "weekly",  run_weekly_performance, False),  # Sunday only
+        ( 8, 30,  "monthly", run_monthly_report,     False),  # checks day=1 inside
     ]
 
     print("[SCHEDULER] Running tight time-check loop (checks every 30s)")
@@ -3505,8 +3507,8 @@ def main():
             time.sleep(3600)  # sleep 1hr then check again
             continue
 
-        for utc_h, utc_m, job_key, job_fn, weekday_only in JOBS:
-            if now_utc.hour == utc_h and now_utc.minute == utc_m:
+        for et_h, et_m, job_key, job_fn, weekday_only in JOBS:
+            if now_et.hour == et_h and now_et.minute == et_m:
                 if weekday_only and not is_weekday:
                     continue
                 if job_key == "recap" and dow != "Saturday":
