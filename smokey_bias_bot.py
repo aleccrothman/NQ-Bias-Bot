@@ -1,10 +1,10 @@
 """
 Smokey Bias Bot - Final
-Schedule (UTC times for Railway):
-  11:00 UTC (07:00 ET) - Macro news from Forex Factory
-  12:00 UTC (08:00 ET) - Morning bias + chart screenshot
-  13:00 UTC (09:00 ET) - NYO update + chart screenshot
-  20:00 UTC (16:00 ET) - EOD score + win rate\n"""
+Schedule (New York time, daylight saving handled automatically):
+  07:00 ET - Macro news from Forex Factory
+  08:00 ET - Morning bias + chart screenshot
+  09:00 ET - NYO update + chart screenshot
+  17:00 ET - EOD score + win rate\n"""
 
 import os
 from tweet_prompts import register_tweet_commands
@@ -3458,11 +3458,11 @@ def main():
     # Ensure persistent data directory exists
     import os as _os
     _os.makedirs("/data", exist_ok=True)
-    print("Smokey Bias Bot - scheduled daily:")
-    print("  11:00 UTC (07:00 ET) - Macro news")
-    print("  12:00 UTC (08:00 ET) - Morning bias + chart")
-    print("  13:00 UTC (09:00 ET) - NYO update + chart")
-    print("  20:00 UTC (16:00 ET) - EOD score + win rate")
+    print("Smokey Bias Bot - scheduled daily (New York time):")
+    print("  07:00 ET - Macro news")
+    print("  08:00 ET - Morning bias + chart")
+    print("  09:00 ET - NYO update + chart")
+    print("  17:00 ET - EOD score + win rate")
 
     # ── Uncomment to test any job immediately on startup ─────────────────────
     # run_news_job()
